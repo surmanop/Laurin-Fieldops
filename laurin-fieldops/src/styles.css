@@ -238,3 +238,5 @@ td.off { background: repeating-linear-gradient(45deg, transparent 0 6px, var(--l
 .impact h3 { color: var(--fg); }
 .impact p { margin: 0; }
 .sub-i { color: var(--muted); }
+
+.uid { display: block; font-family: var(--f-data); background: var(--bg); padding: 8px 10px; border-radius: 6px; word-break: break-all; user-select: all; }

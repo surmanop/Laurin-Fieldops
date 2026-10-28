@@ -32,7 +32,16 @@ export function AppProvider({ children }) {
   const [adjust, setAdjust] = useState(null); // schedule item being marked "not happening"
 
   const reload = useCallback(async () => { try { setData(await api.loadProject()); setError(''); } catch (e) { setError(e.message); } }, []);
-  useEffect(() => { (async () => { setUserId(await auth.getUser()); await reload(); setBooted(true); })(); return api.subscribe(reload); }, [reload]);
+  useEffect(() => {
+    (async () => {
+      const id = await auth.getUser();
+      setUserId(id);
+      // Live app: nothing is readable before sign-in (row-level security), so load only once signed in.
+      if (id || auth.authMode === 'demo') await reload();
+      setBooted(true);
+    })();
+    return api.subscribe(reload);
+  }, [reload]);
   useEffect(() => { const f = () => setView(validView(window.location.hash.slice(1))); window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
 
@@ -55,7 +64,8 @@ export function AppProvider({ children }) {
 
   const value = {
     adjust, setAdjust, api, auth, data, derived, error, booted, user, can, view, go, day, setDay, zone, setZone, today, toast, setToast, write, reload,
-    signIn: async (id) => { const u = await auth.signIn(id); if (u) setUserId(u); },
+    signIn: async (id) => { const u = await auth.signIn(id); if (u) { setUserId(u); if (!data) await reload(); } },
+    userId,
     signOut: async () => { await auth.signOut(); setUserId(null); },
     week: mondayOf(day), working: data ? isWorking(day, data.calendar) : true,
   };

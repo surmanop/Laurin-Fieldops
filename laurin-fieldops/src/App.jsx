@@ -15,7 +15,19 @@ import { fmt } from './logic/dates.js';
 const SCREENS = { day: Day, wwp: Wwp, lookahead: Lookahead, takt: Takt, model: Model, tracker: Tracker, schedule: Schedule, admin: Admin };
 
 function SignIn() {
-  const { data, signIn, auth } = useApp();
+  const { data, signIn, auth, userId, signOut } = useApp();
+  if (auth.authMode === 'microsoft' && userId) {
+    return (
+      <main className="signin"><div className="signin-card">
+        <div className="brand"><Mark /><span className="wordmark">LAURIN</span></div>
+        <h1>No access yet</h1>
+        <p>You're signed in, but you haven't been added to this project. Send this ID to the project owner:</p>
+        <code className="uid">{userId}</code>
+        <p className="demo-note">Owner: run <code>insert into memberships values ('WCHS', '{userId}', 'Name', 'Owner');</code> in Supabase › SQL Editor (use Super or Viewer for others).</p>
+        <button type="button" className="btn" onClick={signOut}>Sign out</button>
+      </div></main>
+    );
+  }
   return (
     <main className="signin">
       <div className="signin-card">
@@ -28,7 +40,7 @@ function SignIn() {
           <>
             <button type="button" className="btn ms" disabled title="Live app only">Sign in with Microsoft</button>
             <p className="demo-note">Demo: Microsoft sign-in is replaced by a role picker. Choose who to sign in as.</p>
-            <div className="who">{data.users.map((u) => (
+            <div className="who">{(data?.users || []).map((u) => (
               <button type="button" key={u.id} className="btn who-b" onClick={() => signIn(u.id)}><b>{u.name}</b><span>{u.role === 'Owner' ? 'Owner: plans, schedule, setup, everything' : u.role === 'Super' ? 'Super: logs actuals, commitments, constraints, tracker' : 'Viewer: read only'}</span></button>
             ))}</div>
           </>
@@ -57,9 +69,15 @@ function Shell() {
 }
 
 function Gate() {
-  const { booted, data, error, user } = useApp();
-  if (error && !data) return <main className="signin"><div className="signin-card"><h1>Can't load the project</h1><p>{error}</p></div></main>;
-  if (!booted || !data) return <main className="signin"><div className="signin-card"><p>Loading WCHS…</p></div></main>;
+  const { booted, data, error, user, userId, auth } = useApp();
+  if (!booted) return <main className="signin"><div className="signin-card"><p>Loading…</p></div></main>;
+  if (auth.authMode === 'microsoft' && !userId) return <SignIn />;
+  if (error && !data) {
+    // A signed-in person with no membership can't read the project: show them how to get access.
+    if (auth.authMode === 'microsoft') return <SignIn />;
+    return <main className="signin"><div className="signin-card"><h1>Can't load the project</h1><p>{error}</p></div></main>;
+  }
+  if (!data) return <main className="signin"><div className="signin-card"><p>Loading WCHS…</p></div></main>;
   return user ? <Shell /> : <SignIn />;
 }
 
