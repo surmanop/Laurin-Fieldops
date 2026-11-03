@@ -240,3 +240,7 @@ td.off { background: repeating-linear-gradient(45deg, transparent 0 6px, var(--l
 .sub-i { color: var(--muted); }
 
 .uid { display: block; font-family: var(--f-data); background: var(--bg); padding: 8px 10px; border-radius: 6px; word-break: break-all; user-select: all; }
+.email-form { display: grid; gap: 8px; }
+.email-form label { font-weight: 600; font-size: .9rem; }
+.email-form input { padding: 10px 12px; }
+.email-sent { margin: 0; background: var(--green-soft); border-left: 4px solid var(--green); padding: 10px 12px; border-radius: 6px; }

@@ -14,6 +14,30 @@ import { fmt } from './logic/dates.js';
 
 const SCREENS = { day: Day, wwp: Wwp, lookahead: Lookahead, takt: Takt, model: Model, tracker: Tracker, schedule: Schedule, admin: Admin };
 
+// Email sign-in: Supabase sends a one-time link; opening it signs the person in and returns them here.
+function EmailSignIn() {
+  const { auth } = useApp();
+  const [email, setEmail] = React.useState('');
+  const [state, setState] = React.useState('idle'); // idle | sending | sent | error
+  const [msg, setMsg] = React.useState('');
+  const send = async (e) => {
+    e.preventDefault();
+    setState('sending'); setMsg('');
+    try { await auth.sendEmailLink(email.trim()); setState('sent'); } catch (err) { setState('error'); setMsg(err.message); }
+  };
+  if (state === 'sent') {
+    return <p className="email-sent">Check <b>{email.trim()}</b> for a sign-in link and open it. It can take a minute to arrive; check junk mail too. <button type="button" className="link" onClick={() => setState('idle')}>Use a different email</button></p>;
+  }
+  return (
+    <form className="email-form" onSubmit={send}>
+      <label htmlFor="signin-email">Work email</label>
+      <input id="signin-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" />
+      <button type="submit" className="btn ms" disabled={state === 'sending' || !email.trim()}>{state === 'sending' ? 'Sending…' : 'Email me a sign-in link'}</button>
+      {state === 'error' && <p className="bad" role="alert">Couldn't send the link: {msg}</p>}
+    </form>
+  );
+}
+
 function SignIn() {
   const { data, signIn, auth, userId, signOut } = useApp();
   if (auth.authMode === 'microsoft' && userId) {
@@ -35,7 +59,10 @@ function SignIn() {
         <h1>Field Ops</h1>
         <p>Takt, Last Planner and progress tracking for every Laurin site.</p>
         {auth.authMode === 'microsoft' ? (
-          <button type="button" className="btn ms" onClick={() => signIn()}>Sign in with Microsoft</button>
+          <>
+            <EmailSignIn />
+            {auth.microsoftEnabled && <button type="button" className="btn ms" onClick={() => signIn()}>Sign in with Microsoft</button>}
+          </>
         ) : (
           <>
             <button type="button" className="btn ms" disabled title="Live app only">Sign in with Microsoft</button>
