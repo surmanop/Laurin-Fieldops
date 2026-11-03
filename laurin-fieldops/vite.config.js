@@ -9,12 +9,13 @@ const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 //   npm run build:demo  -> same app, data kept in the browser, sign-in replaced by a user picker
 export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
+  const sp = mode === 'sharepoint' || process.env.VITE_BACKEND === 'sharepoint'; // SharePoint lists + Microsoft sign-in
   return {
     plugins: [react({ jsxRuntime: 'classic' })],
     resolve: {
       alias: {
-        '@adapter': here(demo ? './src/data/demoAdapter.js' : './src/data/supabaseAdapter.js'),
-        '@auth': here(demo ? './src/auth/demoAuth.js' : './src/auth/microsoftAuth.js'),
+        '@adapter': here(demo ? './src/data/demoAdapter.js' : sp ? './src/data/sharepointAdapter.js' : './src/data/supabaseAdapter.js'),
+        '@auth': here(demo ? './src/auth/demoAuth.js' : sp ? './src/auth/msalAuth.js' : './src/auth/microsoftAuth.js'),
       },
     },
     define: { __DEMO__: JSON.stringify(demo) },
