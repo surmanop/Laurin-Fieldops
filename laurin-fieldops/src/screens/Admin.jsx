@@ -6,6 +6,8 @@ export default function Admin() {
   const { data, can, api, write, user } = useApp();
   const owner = can('admin');
   const [trades, setTrades] = useState(data.trades.join('\n'));
+  const [np, setNp] = useState({ email: '', name: '', role: 'Super' });
+  const addPerson = () => write(() => api.addMember(np.email, np.name, np.role), `${np.email.trim()} added`).then((ok) => ok && setNp({ email: '', name: '', role: 'Super' }));
   const areas = [...new Set(data.areaZones.map((a) => a.area))];
   const [az, setAz] = useState(Object.fromEntries(areas.map((a) => [a, data.areaZones.filter((x) => x.area === a).map((x) => x.zone).join(', ')])));
   const saveAreas = () => write(() => api.saveAreaZones(areas.flatMap((a) => az[a].split(',').map((z) => z.trim()).filter(Boolean).map((zone) => ({ area: a, group: data.areaZones.find((x) => x.area === a)?.group || '', zone })))), 'Area mapping saved');
@@ -17,6 +19,15 @@ export default function Admin() {
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Person</th><th>Role</th></tr></thead>
           <tbody>{data.users.map((u) => <tr key={u.id}><td>{u.name}{u.id === user.id ? ' (you)' : ''}</td>
             <td>{owner && u.id !== user.id ? <select value={u.role} onChange={(e) => write(() => api.saveUserRole(u.id, e.target.value), 'Role changed')}>{['Owner', 'Super', 'Viewer'].map((r) => <option key={r}>{r}</option>)}</select> : u.role}</td></tr>)}</tbody></table></div>
+        {owner && api.addMember && (
+          <div className="form">
+            <Field label="Work email"><input type="email" value={np.email} onChange={(e) => setNp({ ...np, email: e.target.value })} placeholder="name@laurin.ca" /></Field>
+            <Field label="Name"><input value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} /></Field>
+            <Field label="Role"><select value={np.role} onChange={(e) => setNp({ ...np, role: e.target.value })}>{['Owner', 'Super', 'Viewer'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+            <div className="form-a wide"><button type="button" className="btn primary" disabled={!/^\S+@\S+\.\S+$/.test(np.email.trim())} onClick={addPerson}>Add person</button>
+              <span className="note"> They also need access to the Field Operations SharePoint site (member of the Field Operations team).</span></div>
+          </div>
+        )}
       </div>
       <div className="card">
         <h2>Trade list</h2>
