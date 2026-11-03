@@ -15,7 +15,7 @@ export default function Schedule() {
   const onFile = async (file) => {
     setErr(''); setPending(null);
     if (!file) return;
-    if (/\.mpp$/i.test(file.name)) { setErr('.mpp files are read by the server importer in the live app. In this demo, export from MS Project with File › Save As › XML and upload that.'); return; }
+    if (/\.mpp$/i.test(file.name)) { setErr("The browser can't read .mpp files. In MS Project use File › Save As › XML and upload that file."); return; }
     try {
       const { statusDate, tasks } = parseProjectXml(await file.text());
       const rows = tasks.map((t) => ({ ...t, ...categorize(t, data) }));
@@ -35,7 +35,7 @@ export default function Schedule() {
         {can('import') ? (
           <>
             <ol className="steps">
-              <li>In MS Project open the updated schedule and choose <b>File › Save As › XML</b>. (The live app also takes the .mpp file directly.)</li>
+              <li>In MS Project open the updated schedule and choose <b>File › Save As › XML</b>.</li>
               <li>Upload it here. Nothing changes until you review the differences and select <b>Apply update</b>.</li>
               <li>Each activity is placed in zones by the rules below. Field logs, commitments and constraints are kept.</li>
             </ol>
@@ -66,7 +66,7 @@ export default function Schedule() {
           <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Activity</th><th>Pushed</th><th>Reason</th><th>Note</th><th>By</th><th>When</th><th /></tr></thead>
             <tbody>{adj.map((x) => (
               <tr key={x.id}><td>{x.name}<small className="sub">{typeof x.target === 'string' ? 'Takt plan' : x.path}</small></td><td>+{x.days} working day{x.days === 1 ? '' : 's'}</td><td>{x.reason}</td><td>{x.note}</td>
-                <td>{data.users.find((u) => u.id === x.by)?.name || ''}</td><td>{fmt(x.at.slice(0, 10), 'shortY')}</td>
+                <td>{data.users.find((u) => u.id === x.by)?.name || x.byName || ''}</td><td>{fmt(x.at.slice(0, 10), 'shortY')}</td>
                 <td>{can('plan') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('adjustments', x.id), 'Change removed')}>Remove</button>}</td></tr>))}</tbody></table></div>
         ) : <p className="empty">No changes yet. Owners can mark any scheduled item “Not happening” from Day, Weekly plan, 6-week lookahead, Takt plan or 3D zones.</p>}
         {pushed.length > 0 && <details className="bucket"><summary>All {pushed.length} pushed activities</summary>
