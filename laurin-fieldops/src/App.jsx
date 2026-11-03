@@ -39,7 +39,17 @@ function EmailSignIn() {
 }
 
 function SignIn() {
-  const { data, signIn, auth, userId, signOut } = useApp();
+  const { data, signIn, auth, userId, signOut, error } = useApp();
+  if (auth.sharepoint && userId) {
+    return (
+      <main className="signin"><div className="signin-card">
+        <div className="brand"><Mark /><span className="wordmark">LAURIN</span></div>
+        <h1>No access yet</h1>
+        {error ? <p className="bad" role="alert">{error}</p> : <p>You're signed in as <b>{userId}</b>, but you haven't been added to this project. Ask a project owner to add you under Setup › People and roles.</p>}
+        <button type="button" className="btn" onClick={signOut}>Sign out</button>
+      </div></main>
+    );
+  }
   if (auth.authMode === 'microsoft' && userId) {
     return (
       <main className="signin"><div className="signin-card">
@@ -58,7 +68,9 @@ function SignIn() {
         <div className="brand"><Mark /><span className="wordmark">LAURIN</span></div>
         <h1>Field Ops</h1>
         <p>Takt, Last Planner and progress tracking for every Laurin site.</p>
-        {auth.authMode === 'microsoft' ? (
+        {auth.sharepoint ? (
+          <button type="button" className="btn ms" onClick={() => signIn().catch(() => {})}>Sign in with Microsoft</button>
+        ) : auth.authMode === 'microsoft' ? (
           <>
             <EmailSignIn />
             {auth.microsoftEnabled && <button type="button" className="btn ms" onClick={() => signIn()}>Sign in with Microsoft</button>}
