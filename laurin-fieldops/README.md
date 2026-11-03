@@ -47,6 +47,18 @@ npm run dev -- --mode demo      # demo data, role picker, opens at http://localh
 
 Prices and plan limits for Supabase, Vercel and Azure change; check them before choosing. Nothing here was priced.
 
+## SharePoint version (branch `sharepoint`)
+
+The same app, reading and writing the **Field Operations** SharePoint site lists instead of Supabase, with Laurin Microsoft 365 sign-in. The Power Apps app (WCHS Field Ops) uses the same lists, so both show the same actuals, commitments and constraints.
+
+- Build: `npm run build` (mode `sharepoint`; settings in `.env.sharepoint`). The old Supabase build is `npm run build:supabase`.
+- Sign-in: Entra app **Laurin Field Ops (SharePoint)** (single-page app). Permissions: Microsoft Graph `Sites.ReadWrite.All` and `User.Read`, delegated. Each person acts with their own SharePoint access, so they must be a member of the Field Operations site (team).
+- Who can do what: the **Members** list (Email, DisplayName, Role = Owner / Super / Viewer). Owners add people under Setup › People and roles. Roles are enforced by the app; SharePoint itself only checks site access.
+- Lists added for this version: Members, ZoneRules, ScheduleVersions, Adjustments, WagonTasks; columns Activities.Preds (logic links, JSON) and ByEmail on Actuals, Commitments, Constraints.
+- Updates from other people show within 2 minutes (no live push from SharePoint).
+- Schedule import: upload the MS Project XML on the Schedule import screen. Activities are matched by MS Project unique ID; zones set by hand are kept.
+- Each new address the app runs at (Vercel preview or production) must be added as a redirect URI on the Entra app (Authentication › Single-page application).
+
 ## Monthly schedule update
 
 - In the app: Schedule import › upload the MS Project XML (File › Save As › XML). Review what moved, then Apply update.
