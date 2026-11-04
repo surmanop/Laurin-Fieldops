@@ -3,6 +3,7 @@ import { useApp } from '../store.jsx';
 import { DateBar, PlanView, zoneState } from '../ui/common.jsx';
 import { Empty, Item, Kpi, Status } from '../ui/parts.jsx';
 import { ActualForm, zoneLabel } from '../ui/forms.jsx';
+import { Manpower } from '../ui/manpower.jsx';
 import { activeOn, isFor, isZoneCat, onZone } from '../logic/schedule.js';
 import { fmt, offReason, stepWorking } from '../logic/dates.js';
 
@@ -31,6 +32,7 @@ export default function Day() {
         <Kpi v={n((a) => a.category === 'unplaced')} l="Not placed in a zone" tone="mute" />
         <Kpi v={acts.length} l="Actuals logged" tone="mute" />
       </div>
+      <Manpower />
       <div className="card">
         <div className="card-h"><h2>Where work is happening</h2>{can('log') && <button type="button" className="btn primary" onClick={() => setLogFor(zone || '')}>Log actual work</button>}</div>
         <p className="note">Filled tag: zone-specific or takt work. Outlined: Area-wide work only. Dark: actual logged with nothing scheduled. ✓ = actual logged. Tap a tag to open that zone.</p>

@@ -4,6 +4,7 @@ import { DateBar } from '../ui/common.jsx';
 import { Empty, Kpi, Status } from '../ui/parts.jsx';
 import { activeOn, onZone, ppc, STATUSES } from '../logic/schedule.js';
 import { addDays, fmt, mondayOf } from '../logic/dates.js';
+import { isSpecialty, SPECIALTY, specialtyTrade } from '../ui/forms.jsx';
 
 // Zones in ascending order: Zone 1 … Zone 25 by number, then the other codes A–Z (C1, EL, R-107, ST1, W1 …).
 const zoneSort = (a, b) => {
@@ -26,7 +27,7 @@ export default function Trades() {
   const zones = useMemo(() => [...data.zones].sort(zoneSort), [data]);
 
   // Form: one task, several zones. Crew is entered per zone, so totals aren't double counted.
-  const blank = { task: '', status: 'Unscheduled work', pct: '', notes: '', item: '' };
+  const blank = { task: '', status: 'Unscheduled work', pct: '', notes: '', item: '', spec: '' };
   const [f, setF] = useState(blank);
   const [picked, setPicked] = useState({}); // zone code -> crew ('' allowed)
   const [msg, setMsg] = useState('');
@@ -40,6 +41,8 @@ export default function Trades() {
   const save = async () => {
     setMsg('');
     if (!trade) return setMsg('Pick a trade.');
+    if (trade === SPECIALTY && !f.spec.trim()) return setMsg('Say which specialty, e.g. Lockers.');
+    const as = trade === SPECIALTY ? specialtyTrade(f.spec).trim() : trade; // saved trade name
     if (!codes.length) return setMsg('Tick at least one zone.');
     if (!sel && !f.task.trim()) return setMsg('Describe the task.');
     const ordered = zones.filter((z) => z.code in picked).map((z) => z.code);
@@ -48,23 +51,24 @@ export default function Trades() {
         await api.saveRecord('actuals', {
           day, zone,
           activityUid: sel && sel.category !== 'takt' ? sel.uid : null, wagon: sel && sel.category === 'takt' ? sel.wagon : '', activityName: sel ? sel.name : '',
-          status: sel ? f.status : 'Unscheduled work', trade,
+          status: sel ? f.status : 'Unscheduled work', trade: as,
           crew: picked[zone] === '' ? null : +picked[zone], pct: f.pct === '' ? null : +f.pct,
           notes: [f.task.trim(), f.notes.trim()].filter(Boolean).join(' · '),
           by: user.id, at: new Date().toISOString(),
         });
       }
-    }, `${trade}: logged in ${ordered.length} zone${ordered.length === 1 ? '' : 's'}`);
+    }, `${as}: logged in ${ordered.length} zone${ordered.length === 1 ? '' : 's'}`);
     if (ok) { setF(blank); setPicked({}); }
   };
 
   // This trade's work for the week, grouped by zone.
   const wkEnd = addDays(week, 6);
-  const mine = data.actuals.filter((e) => e.trade === trade && e.day >= week && e.day <= wkEnd).sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+  const isMine = (t) => (trade === SPECIALTY ? isSpecialty(t) : t === trade); // "Specialty" shows every named specialty
+  const mine = data.actuals.filter((e) => isMine(e.trade) && e.day >= week && e.day <= wkEnd).sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
   const byZone = zones.map((z) => [z.code, mine.filter((e) => e.zone === z.code)]).filter(([, l]) => l.length)
     .concat([...new Set(mine.map((e) => e.zone))].filter((c) => !zones.some((z) => z.code === c)).map((c) => [c, mine.filter((e) => e.zone === c)]));
-  const P = ppc(data.commitments.filter((c) => c.trade === trade && c.week === week));
-  const P8 = ppc(data.commitments.filter((c) => c.trade === trade && c.week >= addDays(week, -49) && c.week <= week));
+  const P = ppc(data.commitments.filter((c) => isMine(c.trade) && c.week === week));
+  const P8 = ppc(data.commitments.filter((c) => isMine(c.trade) && c.week >= addDays(week, -49) && c.week <= week));
   const crewDays = mine.reduce((s, e) => s + (+e.crew || 0), 0);
 
   return (
@@ -88,6 +92,7 @@ export default function Trades() {
               <h2>Log {trade} work · {fmt(day, 'long')}</h2>
               <p className="note">Tick every zone the task happened in. One actual is saved per zone, with that zone's crew. To link it to a scheduled activity, tick a single zone.</p>
               <div className="form">
+                {trade === SPECIALTY && <label className="field"><span>Which specialty</span><input value={f.spec} maxLength={60} onChange={(e) => setF({ ...f, spec: e.target.value })} placeholder="e.g. Lockers" /></label>}
                 <label className="field wide"><span>Task</span><input value={f.task} maxLength={200} onChange={(e) => setF({ ...f, task: e.target.value })} placeholder="e.g. Board ceilings, level 2 corridor" /></label>
                 {codes.length === 1 && (
                   <label className="field"><span>Scheduled activity (optional)</span>
@@ -119,7 +124,7 @@ export default function Trades() {
                 <summary>{code} <span>· {list.length} entr{list.length === 1 ? 'y' : 'ies'} · {list.reduce((s, e) => s + (+e.crew || 0), 0)} crew-days</span></summary>
                 <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Day</th><th>Work</th><th>Status</th><th>Crew</th><th>%</th><th>Notes</th><th>By</th><th /></tr></thead>
                   <tbody>{list.map((e) => (
-                    <tr key={e.id}><td>{fmt(e.day, 'wk')}</td><td>{e.activityName || 'Unscheduled'}</td><td><Status s={e.status} /></td><td>{e.crew ?? ''}</td><td>{e.pct != null ? e.pct + '%' : ''}</td><td>{e.notes}</td><td>{data.users.find((u) => u.id === e.by)?.name || e.byName || ''}</td>
+                    <tr key={e.id}><td>{fmt(e.day, 'wk')}</td><td>{e.activityName || 'Unscheduled'}{trade === SPECIALTY && <small className="sub">{e.trade}</small>}</td><td><Status s={e.status} /></td><td>{e.crew ?? ''}</td><td>{e.pct != null ? e.pct + '%' : ''}</td><td>{e.notes}</td><td>{data.users.find((u) => u.id === e.by)?.name || e.byName || ''}</td>
                       <td>{can('log') && (e.by === user.id || user.role === 'Owner') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('actuals', e.id), 'Entry deleted')}>Delete</button>}</td></tr>))}</tbody></table></div>
               </details>
             )) : <Empty>No {trade} work logged this week.</Empty>}
