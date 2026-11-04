@@ -9,7 +9,7 @@ import { addDays, fmt } from '../logic/dates.js';
 // "Not happening": the owner pushes a schedule activity or a takt wagon-zone by working days.
 // The preview runs the same forecast as the app, so what you see before saving is what happens after.
 export function AdjustForm() {
-  const { adjust: a, setAdjust, data, derived, user, api, write, today } = useApp();
+  const { adjust: a, setAdjust, data, derived, user, api, write, today, day } = useApp();
   const [mode, setMode] = useState('days');
   const [days, setDays] = useState(1);
   const [until, setUntil] = useState(addDays(a.start, 7));
@@ -26,7 +26,7 @@ export function AdjustForm() {
   const save = async () => {
     if (!n) return setMsg('Enter at least 1 working day, or a date after the current start.');
     if (!reason) return setMsg('Pick a reason.');
-    const ok = await write(() => api.saveRecord('adjustments', { target, name: a.name, path: a.path, days: n, reason, note: note.trim(), fromStart: a.start, by: user.id, at: new Date().toISOString() }), `${a.name} pushed ${n} working day${n === 1 ? '' : 's'}`);
+    const ok = await write(() => api.saveRecord('adjustments', { target, name: a.name, path: a.path, days: n, reason, note: note.trim(), fromStart: a.start, delayFrom: a.start <= day && day <= a.finish ? day : null, by: user.id, at: new Date().toISOString() }), `${a.name} pushed ${n} working day${n === 1 ? '' : 's'}`);
     if (ok) close();
   };
 

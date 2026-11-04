@@ -45,6 +45,7 @@ export function Item({ a, entries = [], extra }) {
         <PlaceButton a={a} />
         <NotHappening a={a} />
       </div>
+      {(a.delays || []).length > 0 && <div className="delay-note">{a.delays.map((d) => <div key={d.id || d.at}><b>Delay</b> +{d.days} working day{d.days === 1 ? '' : 's'}{d.delayFrom ? ` from ${fmt(d.delayFrom, 'wk')}` : ` (logged ${fmt((d.at || '').slice(0, 10), 'wk')})`} · {d.reason}{d.note ? ` \u2014 ${d.note}` : ''}</div>)}</div>}
       {entries.length > 0 && <div className="item-a">{entries.map((e) => <span key={e.id}><Status s={e.status} /> {[e.trade, e.crew != null && e.crew !== '' ? e.crew + ' crew' : '', e.durationDays != null ? e.durationDays + (+e.durationDays === 1 ? ' day' : ' days') : '', e.notes].filter(Boolean).join(' · ')}</span>)}</div>}
       {extra}
     </li>

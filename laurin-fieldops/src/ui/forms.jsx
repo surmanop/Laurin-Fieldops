@@ -64,7 +64,7 @@ export function ActualForm({ zoneKey, onClose }) {
     if (!sel && !f.notes.trim()) return setMsg('Describe unscheduled work in the notes.');
     const ok = await write(async () => {
       await api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() });
-      if (pushN) await api.saveRecord('adjustments', { target: pushTarget(sel), name: sel.name, path: sel.path, days: pushN, reason: f.reason, note: f.notes.trim(), fromStart: sel.start, by: user.id, at: new Date().toISOString() });
+      if (pushN) await api.saveRecord('adjustments', { target: pushTarget(sel), name: sel.name, path: sel.path, days: pushN, reason: f.reason, note: f.notes.trim(), fromStart: sel.start, delayFrom: day, by: user.id, at: new Date().toISOString() });
     }, pushN ? `Actual logged · ${sel.name} pushed ${pushN} working day${pushN === 1 ? '' : 's'}` : 'Actual logged');
     if (ok) onClose();
   };
