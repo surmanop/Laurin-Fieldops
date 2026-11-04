@@ -57,3 +57,29 @@ export function forecastSchedule(activities, adjustments, calendar) {
 }
 
 export const keyMilestones = (rows) => rows.filter((a) => /substantial completion|^occupancy$/i.test(a.name));
+
+// Delays logged on a day (Log actual "Not worked", or Not happening on the Day screen) carry delayFrom.
+// The forecast already shifts the item n working days. If the item was already under way on that day,
+// it pauses instead: its start stays put, it disappears from delayFrom for n working days, and the finish
+// moves out by n. Every push on an item is attached as a.delays so the screens can show a Delay note.
+export function applyDelays(items, adjustments, calendar) {
+  if (!adjustments.length || !items.length) return items;
+  const byTarget = new Map();
+  adjustments.forEach((x) => { const k = String(x.target); byTarget.set(k, [...(byTarget.get(k) || []), x]); });
+  let lo = items[0].start, hi = items[0].finish;
+  items.forEach((a) => { if (a.start < lo) lo = a.start; if (a.finish > hi) hi = a.finish; });
+  const W = makeWorkdays(calendar, addDays(lo, -400), addDays(hi, 400));
+  return items.map((a) => {
+    const key = a.category === 'takt' ? 'tk:' + a.wagon + '|' + a.zones[0] : String(a.uid);
+    const list = byTarget.get(key);
+    if (!list) return a;
+    const delays = [...list].sort((p, q) => ((p.delayFrom || p.at || '') < (q.delayFrom || q.at || '') ? -1 : 1));
+    let start = a.start; const gaps = [];
+    delays.forEach((d) => {
+      if (!d.delayFrom || !(d.fromStart && d.fromStart <= d.delayFrom)) return; // not under way yet: a plain shift
+      if (start > d.fromStart) start = d.fromStart; // keep the start it had when it was pushed
+      gaps.push({ from: W.at(W.idx(d.delayFrom)), to: W.at(W.idx(d.delayFrom) + d.days - 1), days: d.days });
+    });
+    return { ...a, start, gaps, delays };
+  });
+}

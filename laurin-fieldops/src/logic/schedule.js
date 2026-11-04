@@ -7,7 +7,9 @@ export const TRACKER_STATUSES = ['Not started', 'Ready', 'Incomplete Progress', 
 
 export const isZoneCat = (a) => a.category === 'zone' || a.category === 'takt';
 export const onZone = (a, z) => (isZoneCat(a) || a.category === 'areawide') && a.zones.includes(z);
-export const activeOn = (items, day, calendar) => (isWorking(day, calendar) ? items.filter((a) => a.start <= day && a.finish >= day) : []);
+// An item paused by a delay (see applyDelays) isn't active on its gap days.
+export const inGap = (a, day) => (a.gaps || []).some((g) => day >= g.from && day <= g.to);
+export const activeOn = (items, day, calendar) => (isWorking(day, calendar) ? items.filter((a) => a.start <= day && a.finish >= day && !inGap(a, day)) : []);
 export const overlaps = (a, days) => days.some((d) => a.start <= d && a.finish >= d);
 
 // Does a log entry belong to this schedule item?
