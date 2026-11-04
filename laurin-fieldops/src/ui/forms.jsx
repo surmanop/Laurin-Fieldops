@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../store.jsx';
 import { Drawer, Field } from './parts.jsx';
-import { STATUSES, REASONS, CTYPES, onZone, overlaps } from '../logic/schedule.js';
+import { STATUSES, REASONS, CTYPES, inGap, onZone, overlaps } from '../logic/schedule.js';
 import { addDays, fmt, weekDays } from '../logic/dates.js';
 import { PushImpact, pushTarget, usePushPreview } from './adjust.jsx';
 
@@ -49,8 +49,12 @@ export function ActualForm({ zoneKey, onClose }) {
   const { data, derived, day, user, api, write } = useApp();
   const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: '', crew: '', days: '', pct: '', notes: '', push: true, pushDays: 1, reason: '' });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
-  const pool = derived.items.filter((a) => a.start <= day && a.finish >= day);
-  const opts = itemsForKey(pool, f.zone);
+  // Every task in the zone, not just today's: scheduled this day first, then the rest by start date.
+  const inZone = useMemo(() => itemsForKey(derived.items, f.zone), [derived, f.zone]);
+  const onDay = inZone.filter((a) => a.start <= day && a.finish >= day && !inGap(a, day));
+  const others = inZone.filter((a) => !onDay.includes(a)).sort((x, y) => (x.start < y.start ? -1 : x.start > y.start ? 1 : x.name.localeCompare(y.name)));
+  const opts = [...onDay, ...others];
+  const label = (a) => `${a.name}${a.category === 'areawide' ? ` (${a.area}-wide)` : ''}`;
   const sel = opts.find((a) => String(a.uid) === f.item);
   const [msg, setMsg] = useState('');
   // "Not worked" on a scheduled item = Not happening: push it (and what depends on it) through the schedule.
@@ -73,7 +77,10 @@ export function ActualForm({ zoneKey, onClose }) {
       <div className="form">
         <Field label="Zone or area"><ZoneSelect value={f.zone} onChange={(v) => setF((x) => ({ ...x, zone: v, item: '' }))} /></Field>
         <Field label="What was worked"><select value={f.item} onChange={(e) => { const a = opts.find((x) => String(x.uid) === e.target.value); setF((x) => ({ ...x, item: e.target.value, trade: x.trade || (a && data.trades.includes(a.trade) ? a.trade : x.trade) })); }}>
-          <option value="">Unscheduled / other (describe in notes)</option>{opts.map((a) => <option key={a.uid} value={a.uid}>{a.name}{a.category === 'areawide' ? ` (${a.area}-wide)` : ''}</option>)}</select></Field>
+          <option value="">Unscheduled / other (describe in notes)</option>
+          {onDay.length > 0 && <optgroup label={`Scheduled ${fmt(day, 'wk')}`}>{onDay.map((a) => <option key={a.uid} value={a.uid}>{label(a)}</option>)}</optgroup>}
+          {others.length > 0 && <optgroup label="Other tasks in this zone">{others.map((a) => <option key={a.uid} value={a.uid}>{label(a)} · {fmt(a.start)} – {fmt(a.finish, 'shortY')}</option>)}</optgroup>}
+          </select></Field>
         <Field label="Status"><select value={sel ? f.status : 'Unscheduled work'} disabled={!sel} onChange={(e) => set('status')(e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Trade"><TradeSelect value={f.trade} onChange={set('trade')} /></Field>
         <Field label="Crew size"><input type="number" min="0" max="500" value={f.crew} onChange={(e) => set('crew')(e.target.value)} /></Field>
