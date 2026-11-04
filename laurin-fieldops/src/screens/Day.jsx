@@ -4,7 +4,7 @@ import { DateBar, PlanView, zoneState } from '../ui/common.jsx';
 import { Empty, Item, Kpi, Status } from '../ui/parts.jsx';
 import { ActualForm, zoneLabel } from '../ui/forms.jsx';
 import { Manpower } from '../ui/manpower.jsx';
-import { activeOn, isFor, isZoneCat, onZone } from '../logic/schedule.js';
+import { activeOn, inGap, isFor, isZoneCat, onZone } from '../logic/schedule.js';
 import { fmt, offReason, stepWorking } from '../logic/dates.js';
 
 const TRAINS = ['Main train', 'Corridors', 'Gym + change rooms', 'Theatre', 'Mech 201 + service rooms', 'Train 2 · stairs', 'Train 3 · washrooms', 'Elevator'];
@@ -16,6 +16,8 @@ export default function Day() {
   const today = useMemo(() => activeOn(derived.items, day, data.calendar), [derived, day, data]);
   const acts = data.actuals.filter((e) => e.day === day);
   const state = zoneState(today, acts);
+  // Items paused today by a delay: shown as "Pushed" on their zone instead of disappearing without a trace.
+  const paused = useMemo(() => derived.items.filter((a) => a.start <= day && a.finish >= day && inGap(a, day)), [derived, day]);
   const n = (f) => today.filter(f).length;
   const zones = [...data.zones].sort((a, b) => a.order - b.order).filter((z) => showAll || state.has(z.code) || zone === z.code);
   const pick = (code) => { setZone(code); setTimeout(() => document.getElementById('z-' + code.replace(/\W/g, ''))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30); };
@@ -50,14 +52,17 @@ export default function Day() {
                   const own = today.filter((a) => isZoneCat(a) && a.zones.includes(z.code));
                   const aw = today.filter((a) => a.category === 'areawide' && a.zones.includes(z.code));
                   const ze = acts.filter((e) => e.zone === z.code);
-                  const unsched = ze.filter((e) => !today.some((a) => onZone(a, z.code) && isFor(e, a)));
+                  const pz = paused.filter((a) => onZone(a, z.code));
+                  const unsched = ze.filter((e) => !today.some((a) => onZone(a, z.code) && isFor(e, a)) && !pz.some((a) => isFor(e, a)));
                   return (
                     <article key={z.code} id={'z-' + z.code.replace(/\W/g, '')} className={'zone' + (own.length || aw.length || ze.length ? ' busy' : '') + (zone === z.code ? ' sel' : '')} onClick={() => setZone(z.code)}>
                       <header><b>{z.code}</b><span>{z.rooms}</span>{z.trainPos != null && <em>#{z.trainPos}</em>}</header>
                       {own.length > 0 && <ul className="items">{own.map((a) => <Item key={a.uid} a={a} entries={ze.filter((e) => isFor(e, a))} />)}</ul>}
                       {aw.length > 0 && <p className="aw"><b>{aw[0].area}-wide:</b> {aw.map((a) => a.name).join(' · ')}</p>}
+                      {aw.filter((a) => (a.delays || []).length).map((a) => <div key={'d' + a.uid} className="delay-note">{a.delays.map((d) => <div key={d.id || d.at}><b>Delay</b> {a.name}: +{d.days} working day{d.days === 1 ? '' : 's'}{d.delayFrom ? ` from ${fmt(d.delayFrom, 'wk')}` : ''} · {d.reason}{d.note ? ` \u2014 ${d.note}` : ''}</div>)}</div>)}
+                      {pz.length > 0 && <div className="delay-note">{pz.map((a) => { const g = a.gaps.find((x) => day >= x.from && day <= x.to); return <div key={'p' + a.uid}><b>Pushed</b> {a.name}: back on {fmt(stepWorking(g.to, 1, data.calendar), 'wk')}{ze.filter((e) => isFor(e, a)).map((e) => ` \u00b7 ${e.status}${e.notes ? ' \u2014 ' + e.notes : ''}`).join('')}</div>; })}</div>}
                       {unsched.length > 0 && <div className="unsched"><b>Logged, not on the schedule:</b>{unsched.map((e) => <div key={e.id}><Status s={e.status} /> {[e.trade, e.notes].filter(Boolean).join(' · ')}</div>)}</div>}
-                      {!own.length && !aw.length && !ze.length && <Empty>No scheduled work this day.</Empty>}
+                      {!own.length && !aw.length && !ze.length && !pz.length && <Empty>No scheduled work this day.</Empty>}
                       {can('log') && <button type="button" className="btn small" onClick={(ev) => { ev.stopPropagation(); setLogFor(z.code); }}>Log actual</button>}
                     </article>
                   );
