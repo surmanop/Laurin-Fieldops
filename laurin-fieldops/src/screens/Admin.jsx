@@ -31,7 +31,6 @@ function TempPassword({ target, onDone, onSet }) {
 export default function Admin() {
   const { data, can, api, write, user } = useApp();
   const owner = can('admin');
-  const [trades, setTrades] = useState(data.trades.join('\n'));
   const areas = [...new Set(data.areaZones.map((a) => a.area))];
   const [az, setAz] = useState(Object.fromEntries(areas.map((a) => [a, data.areaZones.filter((x) => x.area === a).map((x) => x.zone).join(', ')])));
   const [np, setNp] = useState({ email: '', name: '', role: 'Viewer', pw: '' });
@@ -91,12 +90,7 @@ export default function Admin() {
           </>
         )}
       </div>
-      <div className="card">
-        <h2>Trade list</h2>
-        <p className="note">Offered in every Trade dropdown. One per line.</p>
-        <div className="form"><Field label="Trades" wide><textarea rows={10} value={trades} disabled={!owner} onChange={(e) => setTrades(e.target.value)} /></Field>
-          {owner && <div className="form-a wide"><button type="button" className="btn primary" onClick={() => write(() => api.saveTrades([...new Set(trades.split('\n').map((t) => t.trim()).filter(Boolean))]), 'Trade list saved')}>Save trade list</button></div>}</div>
-      </div>
+      <TradeList />
       <div className="card">
         <h2>Main-floor Areas</h2>
         <p className="note">Which takt zones each schedule Area covers (from key plan A2.00R1). Area-wide activities show in every zone listed.</p>
@@ -111,5 +105,51 @@ export default function Admin() {
         </div>
       )}
     </section>
+  );
+}
+
+// Trade list: drives every Trade dropdown, the manpower boxes and the By trade buttons. Owners edit; each change saves at once.
+function TradeList() {
+  const { data, can, api, write } = useApp();
+  const owner = can('admin');
+  const [name, setName] = useState('');
+  const [msg, setMsg] = useState('');
+  const list = data.trades;
+  const used = (t) => data.actuals.filter((e) => e.trade === t).length + data.commitments.filter((c) => c.trade === t).length
+    + data.constraints.filter((c) => c.trade === t).length + (data.manpower || []).filter((m) => m.trade === t).length;
+  const save = (next, done) => write(() => api.saveTrades(next), done);
+  const add = async () => {
+    setMsg('');
+    const t = name.trim().replace(/\s+/g, ' ');
+    if (!t) return;
+    if (list.some((x) => x.toLowerCase() === t.toLowerCase())) return setMsg(`${t} is already on the list.`);
+    // New trades go before Specialty / Cleaning when those are at the end, so the catch-alls stay last.
+    let at = list.length;
+    while (at > 0 && ['Specialty', 'Cleaning'].includes(list[at - 1])) at--;
+    if (await save([...list.slice(0, at), t, ...list.slice(at)], `${t} added`)) setName('');
+  };
+  const move = (i, d) => { const n = [...list]; [n[i], n[i + d]] = [n[i + d], n[i]]; save(n, 'Order saved'); };
+  const remove = (t) => save(list.filter((x) => x !== t), `${t} removed`);
+  return (
+    <div className="card">
+      <h2>Trade list · {list.length}</h2>
+      <p className="note">Shown in every Trade dropdown, the manpower boxes on the Day screen and the By trade tab, in this order. Removing a trade only takes it off the lists; work already logged under it is kept and still shows on By trade.</p>
+      {owner && (
+        <div className="row" style={{ gap: 6, margin: '10px 0', flexWrap: 'wrap' }}>
+          <input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} placeholder="New trade, e.g. Insulation" aria-label="New trade" style={{ width: 260 }} />
+          <button type="button" className="btn primary" onClick={add} disabled={!name.trim()}>Add trade</button>
+          <span className="msg bad">{msg}</span>
+        </div>
+      )}
+      <div className="tbl-wrap"><table className="tbl"><thead><tr><th>#</th><th>Trade</th><th>Entries logged</th>{owner && <th />}</tr></thead>
+        <tbody>{list.map((t, i) => (
+          <tr key={t}><td>{i + 1}</td><td>{t}</td><td>{used(t) || ''}</td>
+            {owner && <td style={{ whiteSpace: 'nowrap' }}>
+              <button type="button" className="btn small" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${t} up`}>↑</button>{' '}
+              <button type="button" className="btn small" disabled={i === list.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${t} down`}>↓</button>{' '}
+              <button type="button" className="link" onClick={() => remove(t)}>Remove</button>
+            </td>}
+          </tr>))}</tbody></table></div>
+    </div>
   );
 }
