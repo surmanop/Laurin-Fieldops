@@ -46,3 +46,4 @@ export async function saveManpower(day, rows) {
 }
 export async function savePlacement(uid, zones) { load(); state.placements = state.placements.filter((p) => p.uid !== uid).concat({ uid, zones, by: 'peter', at: new Date().toISOString() }); persist(); }
 export async function removePlacement(uid) { load(); state.placements = state.placements.filter((p) => p.uid !== uid); persist(); }
+export async function setTempPassword(args) { if ((args.password || '').length < 8) throw new Error('Temporary password must be 8 to 72 characters.'); load(); if (args.email) state.invites = (state.invites || []).filter((i) => i.email !== args.email.toLowerCase()); persist(); return { ok: true, email: args.email || '', role: args.role || 'Viewer' }; }

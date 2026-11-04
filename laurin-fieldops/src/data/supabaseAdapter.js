@@ -87,6 +87,14 @@ export async function saveUserRole(id, role) { must(await supabase.from('members
 // Add a person by email. Returns 'member' if they already have an account (access now), or 'invited'
 // (their role is applied automatically the first time they sign in with that email).
 export async function addMember(email, name, role) { return must(await supabase.rpc('invite_member', { p_project: PROJECT, p_email: email, p_name: name, p_role: role })); }
+// Owner sets a temporary password (no email needed): { email | userId, name, role, password }. Runs on the server (api/).
+export async function setTempPassword(args) {
+  const token = (await supabase.auth.getSession()).data.session?.access_token;
+  const r = await fetch('/api/set-temp-password', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...args, project: PROJECT }) });
+  let body = {}; try { body = await r.json(); } catch (e) { /* not JSON */ }
+  if (!r.ok) throw new Error(body.error || `Server error ${r.status}`);
+  return body;
+}
 export async function setInviteRole(email, role) { must(await supabase.from('invites').update({ role }).eq('project', PROJECT).eq('email', email)); }
 export async function removeInvite(email) { must(await supabase.from('invites').delete().eq('project', PROJECT).eq('email', email)); }
 export async function replaceActivities(rows, version, clearAdjustments = true) { must(await supabase.rpc('replace_activities', { p_project: PROJECT, p_rows: rows, p_version: version, p_clear_adjustments: clearAdjustments })); }
