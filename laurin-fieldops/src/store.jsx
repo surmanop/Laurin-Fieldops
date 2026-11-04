@@ -34,8 +34,8 @@ export function AppProvider({ children }) {
   const [adjust, setAdjust] = useState(null); // schedule item being marked "not happening"
   const [place, setPlace] = useState(null); // unplaced schedule item being put into zones
   const [signingIn, setSigningIn] = useState(false); // visitor opened the sign-in screen
-  const [account, setAccount] = useState({ email: '', hasPassword: true });
-  const refreshAccount = useCallback(async () => { if (auth.getEmail) setAccount({ email: await auth.getEmail(), hasPassword: await auth.hasPassword() }); }, []);
+  const [account, setAccount] = useState({ email: '', hasPassword: true, temp: false });
+  const refreshAccount = useCallback(async () => { if (auth.getEmail) setAccount({ email: await auth.getEmail(), hasPassword: await auth.hasPassword(), temp: auth.isTempPassword ? await auth.isTempPassword() : false }); }, []);
 
   const reload = useCallback(async () => { try { setData(applyPlacements(await api.loadProject())); setError(''); } catch (e) { setError(e.message); } }, []);
   useEffect(() => {
@@ -77,7 +77,7 @@ export function AppProvider({ children }) {
     signInWithPassword: async (email, pw) => { const u = await auth.signInWithPassword(email, pw); setUserId(u); await refreshAccount(); await reload(); setSigningIn(false); },
     setPassword: async (pw) => { await auth.setPassword(pw); await refreshAccount(); },
     userId, member, account, signingIn, setSigningIn,
-    signOut: async () => { await auth.signOut(); setUserId(null); setAccount({ email: '', hasPassword: true }); await reload(); },
+    signOut: async () => { await auth.signOut(); setUserId(null); setAccount({ email: '', hasPassword: true, temp: false }); await reload(); },
     week: mondayOf(day), working: data ? isWorking(day, data.calendar) : true,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

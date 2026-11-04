@@ -77,14 +77,14 @@ function SignIn() {
             <p>Sign in to log work and make changes. Viewing doesn't need a sign-in.</p>
             {linkMode ? (
               <>
-                <p className="demo-note">First time, or forgot your password? We'll email you a one-time sign-in link. After you open it you can set a password.</p>
+                <p className="demo-note">No password yet, or forgot it? Ask the project owner to set a temporary password for you. You can also try an emailed sign-in link, but it may not arrive.</p>
                 <EmailSignIn />
                 <button type="button" className="link" onClick={() => setLinkMode(false)}>I have a password</button>
               </>
             ) : (
               <>
                 <PasswordSignIn />
-                <button type="button" className="link" onClick={() => setLinkMode(true)}>First time or forgot password? Email me a sign-in link</button>
+                <button type="button" className="link" onClick={() => setLinkMode(true)}>No password yet or forgot it?</button>
               </>
             )}
             {auth.microsoftEnabled && <button type="button" className="btn ms" onClick={() => signIn()}>Sign in with Microsoft</button>}
@@ -107,7 +107,7 @@ function SignIn() {
 
 // Shown to a signed-in person until they set a password (or close it), so next time they skip the emailed link.
 function SetPassword({ onClose, required }) {
-  const { setPassword, setToast } = useApp();
+  const { setPassword, setToast, account } = useApp();
   const [pw, setPw] = React.useState('');
   const [pw2, setPw2] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -122,8 +122,9 @@ function SetPassword({ onClose, required }) {
   };
   return (
     <div className="card pw-card">
-      <h2>{required ? 'Set a password' : 'Change password'}</h2>
-      {required && <p className="note">Set a password now and next time you can sign in with your email and password, with no emailed link.</p>}
+      <h2>{account.temp ? 'Set your own password' : required ? 'Set a password' : 'Change password'}</h2>
+      {account.temp ? <p className="note">You signed in with a temporary password from the project owner. Replace it with your own now.</p>
+        : required && <p className="note">Set a password now and next time you can sign in with your email and password, with no emailed link.</p>}
       <form className="form" onSubmit={save}>
         <label className="field"><span>New password (8+ characters)</span><input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
         <label className="field"><span>Type it again</span><input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>
