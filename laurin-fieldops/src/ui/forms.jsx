@@ -46,7 +46,7 @@ export function TradeSelect({ value, onChange }) {
 
 export function ActualForm({ zoneKey, onClose }) {
   const { data, derived, day, user, api, write } = useApp();
-  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: '', crew: '', pct: '', notes: '' });
+  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: '', crew: '', days: '', pct: '', notes: '' });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const pool = derived.items.filter((a) => a.start <= day && a.finish >= day);
   const opts = itemsForKey(pool, f.zone);
@@ -55,7 +55,7 @@ export function ActualForm({ zoneKey, onClose }) {
   const save = async () => {
     if (!f.zone) return setMsg('Pick a zone or area.');
     if (!sel && !f.notes.trim()) return setMsg('Describe unscheduled work in the notes.');
-    const ok = await write(() => api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() }), 'Actual logged');
+    const ok = await write(() => api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() }), 'Actual logged');
     if (ok) onClose();
   };
   return (
@@ -67,6 +67,7 @@ export function ActualForm({ zoneKey, onClose }) {
         <Field label="Status"><select value={sel ? f.status : 'Unscheduled work'} disabled={!sel} onChange={(e) => set('status')(e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Trade"><TradeSelect value={f.trade} onChange={set('trade')} /></Field>
         <Field label="Crew size"><input type="number" min="0" max="500" value={f.crew} onChange={(e) => set('crew')(e.target.value)} /></Field>
+        <Field label="Duration (days the task took)"><input type="number" min="0" max="999" step="0.5" value={f.days} onChange={(e) => set('days')(e.target.value)} placeholder="optional" /></Field>
         <Field label="Field % complete"><input type="number" min="0" max="100" value={f.pct} onChange={(e) => set('pct')(e.target.value)} /></Field>
         <Field label="Notes (what was done, delays, reasons)" wide><textarea value={f.notes} maxLength={1000} onChange={(e) => set('notes')(e.target.value)} /></Field>
         <div className="form-a wide"><button type="button" className="btn primary" onClick={save}>Log actual</button><span className="msg bad">{msg}</span></div>

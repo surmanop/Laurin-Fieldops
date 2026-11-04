@@ -45,7 +45,7 @@ export function Item({ a, entries = [], extra }) {
         <PlaceButton a={a} />
         <NotHappening a={a} />
       </div>
-      {entries.length > 0 && <div className="item-a">{entries.map((e) => <span key={e.id}><Status s={e.status} /> {[e.trade, e.crew != null && e.crew !== '' ? e.crew + ' crew' : '', e.notes].filter(Boolean).join(' · ')}</span>)}</div>}
+      {entries.length > 0 && <div className="item-a">{entries.map((e) => <span key={e.id}><Status s={e.status} /> {[e.trade, e.crew != null && e.crew !== '' ? e.crew + ' crew' : '', e.durationDays != null ? e.durationDays + (+e.durationDays === 1 ? ' day' : ' days') : '', e.notes].filter(Boolean).join(' · ')}</span>)}</div>}
       {extra}
     </li>
   );
