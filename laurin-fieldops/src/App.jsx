@@ -10,9 +10,10 @@ import Model from './screens/Model.jsx';
 import Tracker from './screens/Tracker.jsx';
 import Schedule from './screens/Schedule.jsx';
 import Admin from './screens/Admin.jsx';
+import Trades from './screens/Trades.jsx';
 import { fmt } from './logic/dates.js';
 
-const SCREENS = { day: Day, wwp: Wwp, lookahead: Lookahead, takt: Takt, model: Model, tracker: Tracker, schedule: Schedule, admin: Admin };
+const SCREENS = { day: Day, wwp: Wwp, trades: Trades, lookahead: Lookahead, takt: Takt, model: Model, tracker: Tracker, schedule: Schedule, admin: Admin };
 
 // Email sign-in: Supabase sends a one-time link; opening it signs the person in and returns them here.
 function EmailSignIn() {
