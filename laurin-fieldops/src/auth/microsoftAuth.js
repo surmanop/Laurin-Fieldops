@@ -11,10 +11,11 @@ const session = async () => (await supabase.auth.getSession()).data.session;
 export async function getUser() { return (await session())?.user?.id || null; }
 export async function getEmail() { return (await session())?.user?.email || ''; }
 export async function hasPassword() { return !!(await session())?.user?.user_metadata?.has_password; }
+export async function isTempPassword() { return !!(await session())?.user?.user_metadata?.temp_password; }
 export async function signIn() { await supabase.auth.signInWithOAuth({ provider: 'azure', options: { scopes: 'email openid profile', redirectTo: window.location.origin } }); return null; }
 export async function signInWithPassword(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Wrong email or password. First time, or no password yet? Use the emailed link below.' : error.message);
+  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Wrong email or password. No password yet? Ask the project owner to set a temporary one for you.' : error.message);
   return data.user.id;
 }
 export async function sendEmailLink(email) {
@@ -22,7 +23,7 @@ export async function sendEmailLink(email) {
   if (error) throw new Error(error.message);
 }
 export async function setPassword(password) {
-  const { error } = await supabase.auth.updateUser({ password, data: { has_password: true } });
+  const { error } = await supabase.auth.updateUser({ password, data: { has_password: true, temp_password: false } });
   if (error) throw new Error(error.message);
 }
 export async function signOut() { await supabase.auth.signOut(); }
