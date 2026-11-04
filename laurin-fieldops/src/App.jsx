@@ -77,14 +77,14 @@ function SignIn() {
             <p>Sign in to log work and make changes. Viewing doesn't need a sign-in.</p>
             {linkMode ? (
               <>
-                <p className="demo-note">No password yet, or forgot it? Ask the project owner to set a temporary password for you. You can also try an emailed sign-in link, but it may not arrive.</p>
+                <p className="demo-note">First time, or forgot your password? We'll email you a one-time sign-in link. After you open it you can set a password. Only a couple of links can be sent per hour, so if it says to try later, wait and try again.</p>
                 <EmailSignIn />
                 <button type="button" className="link" onClick={() => setLinkMode(false)}>I have a password</button>
               </>
             ) : (
               <>
                 <PasswordSignIn />
-                <button type="button" className="link" onClick={() => setLinkMode(true)}>No password yet or forgot it?</button>
+                <button type="button" className="link" onClick={() => setLinkMode(true)}>First time or forgot password? Email me a sign-in link</button>
               </>
             )}
             {auth.microsoftEnabled && <button type="button" className="btn ms" onClick={() => signIn()}>Sign in with Microsoft</button>}
