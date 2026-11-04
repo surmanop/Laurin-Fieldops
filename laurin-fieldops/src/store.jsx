@@ -15,6 +15,7 @@ const RIGHTS = {
   Owner: ['log', 'tracker', 'plan', 'admin', 'import'],
   Super: ['log', 'tracker'],
   Viewer: [],
+  Visitor: [], // not signed in, or signed in but not added to the project: view only
 };
 
 const Ctx = React.createContext(null);
@@ -30,14 +31,18 @@ export function AppProvider({ children }) {
   const [zone, setZone] = useState(null);
   const [toast, setToast] = useState('');
   const [adjust, setAdjust] = useState(null); // schedule item being marked "not happening"
+  const [signingIn, setSigningIn] = useState(false); // visitor opened the sign-in screen
+  const [account, setAccount] = useState({ email: '', hasPassword: true });
+  const refreshAccount = useCallback(async () => { if (auth.getEmail) setAccount({ email: await auth.getEmail(), hasPassword: await auth.hasPassword() }); }, []);
 
   const reload = useCallback(async () => { try { setData(await api.loadProject()); setError(''); } catch (e) { setError(e.message); } }, []);
   useEffect(() => {
     (async () => {
       const id = await auth.getUser();
       setUserId(id);
-      // Live app: nothing is readable before sign-in (row-level security), so load only once signed in.
-      if (id || auth.authMode === 'demo') await reload();
+      if (id) await refreshAccount();
+      // Live app: the project is readable without signing in (view only), so always load.
+      if (id || auth.authMode === 'demo' || auth.publicView) await reload();
       setBooted(true);
     })();
     return api.subscribe(reload);
@@ -46,7 +51,9 @@ export function AppProvider({ children }) {
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
 
   const go = (v, opts = {}) => { if (opts.day) setDay(opts.day); if (opts.zone !== undefined) setZone(opts.zone); if (window.location.hash.slice(1) !== v) window.location.hash = v; setView(v); };
-  const user = data && userId ? data.users.find((u) => u.id === userId) || null : null;
+  const member = data && userId ? data.users.find((u) => u.id === userId) || null : null;
+  // Visitors (and people signed in but not yet added) view everything except Setup and change nothing.
+  const user = member || (data && auth.publicView ? { id: userId, name: userId ? account.email || 'Signed in' : 'Visitor', role: 'Visitor', signedIn: !!userId } : null);
   const can = (right) => !!user && (RIGHTS[user.role] || []).includes(right);
 
   const today = localToday();
@@ -65,8 +72,10 @@ export function AppProvider({ children }) {
   const value = {
     adjust, setAdjust, api, auth, data, derived, error, booted, user, can, view, go, day, setDay, zone, setZone, today, toast, setToast, write, reload,
     signIn: async (id) => { const u = await auth.signIn(id); if (u) { setUserId(u); if (!data) await reload(); } },
-    userId,
-    signOut: async () => { await auth.signOut(); setUserId(null); },
+    signInWithPassword: async (email, pw) => { const u = await auth.signInWithPassword(email, pw); setUserId(u); await refreshAccount(); await reload(); setSigningIn(false); },
+    setPassword: async (pw) => { await auth.setPassword(pw); await refreshAccount(); },
+    userId, member, account, signingIn, setSigningIn,
+    signOut: async () => { await auth.signOut(); setUserId(null); setAccount({ email: '', hasPassword: true }); await reload(); },
     week: mondayOf(day), working: data ? isWorking(day, data.calendar) : true,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
