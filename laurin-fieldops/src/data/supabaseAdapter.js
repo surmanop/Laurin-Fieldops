@@ -8,6 +8,19 @@ export const mode = 'live';
 
 const must = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
 const sel = (t, q = '*') => supabase.from(t).select(q).eq('project', PROJECT);
+// The Data API returns at most 1,000 rows per request (Supabase "Max rows"), so big tables are read in pages.
+// Each page is ordered by the table's key so no row is skipped or repeated between pages.
+const PAGE = 1000;
+async function selAll(t, keys) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = sel(t);
+    keys.forEach((k) => { q = q.order(k, { ascending: true }); });
+    const rows = must(await q.range(from, from + PAGE - 1));
+    out.push(...rows);
+    if (rows.length < PAGE) return out;
+  }
+}
 
 // Column names in Postgres are snake_case; the app uses camelCase.
 const toCamel = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]));
@@ -17,15 +30,15 @@ export async function loadProject() {
   const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments, invites, manpower, placements] = await Promise.all([
     supabase.from('projects').select('*').eq('code', PROJECT).single().then(must),
     sel('zones').order('sort_order').then(must), sel('rooms').then(must), supabase.from('trades').select('*').order('sort_order').then(must),
-    sel('area_zones').then(must), sel('calendar_exceptions').then(must), sel('activities').limit(20000).then(must),
-    sel('takt_settings').single().then(must), sel('wagons').order('sequence').then(must), sel('room_tasks').limit(20000).then(must),
+    sel('area_zones').then(must), sel('calendar_exceptions').then(must), selAll('activities', ['schedule_uid']),
+    sel('takt_settings').single().then(must), sel('wagons').order('sequence').then(must), selAll('room_tasks', ['room', 'task']),
     sel('wagon_tasks').then(must), sel('zone_rules').order('priority').then(must), supabase.from('members_view').select('*').eq('project', PROJECT).then(must),
     sel('schedule_versions').order('loaded_at', { ascending: false }).then(must),
-    sel('actuals').then(must), sel('commitments').then(must), sel('constraints').then(must), sel('schedule_adjustments').order('at').then(must),
+    selAll('actuals', ['id']), selAll('commitments', ['id']), selAll('constraints', ['id']), selAll('schedule_adjustments', ['at', 'id']),
     // Only owners can read invites (row-level security); everyone else gets an empty list.
     sel('invites').order('invited_at').then(must),
-    sel('manpower').order('day').limit(50000).then(must),
-    sel('zone_placements').then(must),
+    selAll('manpower', ['day', 'trade']),
+    selAll('zone_placements', ['schedule_uid']),
   ]);
   const rt = {}; roomTasks.forEach((r) => { (rt[r.room] ||= {})[r.task] = r.status; });
   const wt = {}; wagonTasks.forEach((r) => { (wt[r.wagon_id] ||= []).push(r.task); });
