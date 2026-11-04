@@ -6,7 +6,7 @@ import { computeTakt, taktItems } from './logic/takt.js';
 import { forecastSchedule } from './logic/forecast.js';
 
 export const VIEWS = [
-  ['day', 'Day'], ['wwp', 'Weekly plan'], ['lookahead', '6-week lookahead'], ['takt', 'Takt plan'], ['model', '3D zones'], ['tracker', 'Tracker'], ['schedule', 'Schedule import'], ['admin', 'Setup'],
+  ['day', 'Day'], ['wwp', 'Weekly plan'], ['trades', 'By trade'], ['lookahead', '6-week lookahead'], ['takt', 'Takt plan'], ['model', '3D zones'], ['tracker', 'Tracker'], ['schedule', 'Schedule import'], ['admin', 'Setup'],
 ];
 const validView = (h) => (VIEWS.some(([v]) => v === h) ? h : 'day');
 
