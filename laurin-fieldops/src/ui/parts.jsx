@@ -3,6 +3,7 @@ import { fmt } from '../logic/dates.js';
 import { STATUSES } from '../logic/schedule.js';
 import { NotHappening } from './adjust.jsx';
 import { PlaceButton } from './place.jsx';
+import { useApp } from '../store.jsx';
 
 export const Mark = () => (
   <svg className="mark" viewBox="0 0 44 32" aria-hidden="true"><polygon className="mk-k" points="12,0 26,0 14,32 0,32" /><polygon className="mk-g" points="26,0 44,0 32,32 14,32" /></svg>
@@ -29,6 +30,8 @@ export const Field = ({ label, children, wide }) => (<label className={'field' +
 
 // One schedule item: master schedule activity or takt wagon-zone.
 export function Item({ a, entries = [], extra }) {
+  const { data } = useApp();
+  const placer = a.placed ? data.users.find((u) => u.id === a.placed.by)?.name : '';
   return (
     <li className={'item' + (a.category === 'takt' ? ' takt' : '')} style={a.category === 'takt' ? { borderLeftColor: a.color } : undefined}>
       <div className="item-n">{a.name}</div>
@@ -41,7 +44,7 @@ export function Item({ a, entries = [], extra }) {
         {a.critical && <span className="tag bad">Critical</span>}
         {a.blocked && <span className="tag bad">Blocked</span>}
         {a.shift > 0 && <span className="tag bad" title={`Baseline ${fmt(a.baseStart)} – ${fmt(a.baseFinish, 'shortY')}`}>Pushed +{a.shift}d</span>}
-        {a.placed && <span className="tag placed" title={`Placed by the team · schedule group: ${a.placed.from}`}>Placed by team</span>}
+        {a.placed && <span className="tag placed" title={`Schedule group: ${a.placed.from}`}>Placed by {placer || 'team'}{a.placed.at ? ` \u00b7 ${fmt(a.placed.at.slice(0, 10))}` : ''}</span>}
         <PlaceButton a={a} />
         <NotHappening a={a} />
       </div>
