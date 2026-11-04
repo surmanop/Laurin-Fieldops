@@ -75,9 +75,9 @@ export default function Day() {
       <div className="card">
         <h2>Actual work log · {fmt(day, 'long')}</h2>
         {acts.length ? (
-          <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Zone</th><th>Work</th><th>Status</th><th>Trade</th><th>Crew</th><th>%</th><th>Notes</th><th>By</th><th /></tr></thead>
+          <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Zone</th><th>Work</th><th>Status</th><th>Trade</th><th>Crew</th><th>Days</th><th>%</th><th>Notes</th><th>By</th><th /></tr></thead>
             <tbody>{acts.map((e) => (
-              <tr key={e.id}><td>{zoneLabel(e.zone)}</td><td>{e.activityName || 'Unscheduled'}</td><td><Status s={e.status} /></td><td>{e.trade}</td><td>{e.crew ?? ''}</td><td>{e.pct != null ? e.pct + '%' : ''}</td><td>{e.notes}</td><td>{data.users.find((u) => u.id === e.by)?.name || ''}</td>
+              <tr key={e.id}><td>{zoneLabel(e.zone)}</td><td>{e.activityName || 'Unscheduled'}</td><td><Status s={e.status} /></td><td>{e.trade}</td><td>{e.crew ?? ''}</td><td>{e.durationDays ?? ''}</td><td>{e.pct != null ? e.pct + '%' : ''}</td><td>{e.notes}</td><td>{data.users.find((u) => u.id === e.by)?.name || ''}</td>
                 <td>{can('log') && (e.by === user.id || user.role === 'Owner') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('actuals', e.id), 'Entry deleted')}>Delete</button>}</td></tr>))}</tbody></table></div>
         ) : <Empty>Nothing logged for this day yet.</Empty>}
       </div>

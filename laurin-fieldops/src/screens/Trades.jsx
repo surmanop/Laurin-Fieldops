@@ -27,7 +27,7 @@ export default function Trades() {
   const zones = useMemo(() => [...data.zones].sort(zoneSort), [data]);
 
   // Form: one task, several zones. Crew is entered per zone, so totals aren't double counted.
-  const blank = { task: '', status: 'Unscheduled work', pct: '', notes: '', item: '', spec: '' };
+  const blank = { task: '', status: 'Unscheduled work', pct: '', days: '', notes: '', item: '', spec: '' };
   const [f, setF] = useState(blank);
   const [picked, setPicked] = useState({}); // zone code -> crew ('' allowed)
   const [msg, setMsg] = useState('');
@@ -52,7 +52,7 @@ export default function Trades() {
           day, zone,
           activityUid: sel && sel.category !== 'takt' ? sel.uid : null, wagon: sel && sel.category === 'takt' ? sel.wagon : '', activityName: sel ? sel.name : '',
           status: sel ? f.status : 'Unscheduled work', trade: as,
-          crew: picked[zone] === '' ? null : +picked[zone], pct: f.pct === '' ? null : +f.pct,
+          crew: picked[zone] === '' ? null : +picked[zone], durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct,
           notes: [f.task.trim(), f.notes.trim()].filter(Boolean).join(' · '),
           by: user.id, at: new Date().toISOString(),
         });
@@ -102,6 +102,7 @@ export default function Trades() {
                 )}
                 <label className="field"><span>Status</span>
                   <select value={sel ? f.status : 'Unscheduled work'} disabled={!sel} onChange={(e) => setF({ ...f, status: e.target.value })}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></label>
+                <label className="field"><span>Duration (days the task took)</span><input type="number" min="0" max="999" step="0.5" value={f.days} onChange={(e) => setF({ ...f, days: e.target.value })} placeholder="optional" /></label>
                 <label className="field"><span>Field % complete</span><input type="number" min="0" max="100" value={f.pct} onChange={(e) => setF({ ...f, pct: e.target.value })} /></label>
                 <label className="field wide"><span>Notes</span><textarea value={f.notes} maxLength={800} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
               </div>
@@ -122,9 +123,9 @@ export default function Trades() {
             {byZone.length ? byZone.map(([code, list]) => (
               <details key={code} className="bucket" open>
                 <summary>{code} <span>· {list.length} entr{list.length === 1 ? 'y' : 'ies'} · {list.reduce((s, e) => s + (+e.crew || 0), 0)} crew-days</span></summary>
-                <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Day</th><th>Work</th><th>Status</th><th>Crew</th><th>%</th><th>Notes</th><th>By</th><th /></tr></thead>
+                <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Day</th><th>Work</th><th>Status</th><th>Crew</th><th>Days</th><th>%</th><th>Notes</th><th>By</th><th /></tr></thead>
                   <tbody>{list.map((e) => (
-                    <tr key={e.id}><td>{fmt(e.day, 'wk')}</td><td>{e.activityName || 'Unscheduled'}{trade === SPECIALTY && <small className="sub">{e.trade}</small>}</td><td><Status s={e.status} /></td><td>{e.crew ?? ''}</td><td>{e.pct != null ? e.pct + '%' : ''}</td><td>{e.notes}</td><td>{data.users.find((u) => u.id === e.by)?.name || e.byName || ''}</td>
+                    <tr key={e.id}><td>{fmt(e.day, 'wk')}</td><td>{e.activityName || 'Unscheduled'}{trade === SPECIALTY && <small className="sub">{e.trade}</small>}</td><td><Status s={e.status} /></td><td>{e.crew ?? ''}</td><td>{e.durationDays ?? ''}</td><td>{e.pct != null ? e.pct + '%' : ''}</td><td>{e.notes}</td><td>{data.users.find((u) => u.id === e.by)?.name || e.byName || ''}</td>
                       <td>{can('log') && (e.by === user.id || user.role === 'Owner') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('actuals', e.id), 'Entry deleted')}>Delete</button>}</td></tr>))}</tbody></table></div>
               </details>
             )) : <Empty>No {trade} work logged this week.</Empty>}
