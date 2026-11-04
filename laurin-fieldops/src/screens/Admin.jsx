@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../store.jsx';
 import { Field } from '../ui/parts.jsx';
 
@@ -37,7 +37,9 @@ export default function Admin() {
   const [np, setNp] = useState({ email: '', name: '', role: 'Viewer', pw: '' });
   const [tp, setTp] = useState(null); // invite email or member id with the temp-password form open
   const [given, setGiven] = useState(null); // { label, pw } just set, shown until dismissed
-  const canTemp = !!api.setTempPassword;
+  // Temporary passwords only show once the server function is set up; until then people use the emailed link.
+  const [canTemp, setCanTemp] = useState(false);
+  useEffect(() => { let on = true; if (api.tempPasswordReady) api.tempPasswordReady().then((ok) => on && setCanTemp(ok)); return () => { on = false; }; }, [api]);
   const [added, setAdded] = useState('');
   const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(np.email.trim());
   const add = async () => {
@@ -61,7 +63,7 @@ export default function Admin() {
     <section className="screen">
       <div className="card">
         <h2>People and roles</h2>
-        <p className="note">Owner: everything, including plan, schedule and setup. Super: logs actuals, commitments, constraints and tracker. Viewer: read only. Add people below. With a temporary password they can sign in right away (no email needed) and set their own password on first sign-in.</p>
+        <p className="note">Owner: everything, including plan, schedule and setup. Super: logs actuals, commitments, constraints and tracker. Viewer: read only. Add people below. They open the site, choose Sign in to edit › First time or forgot password, and get an emailed link; after opening it they set their own password. The role you set here is applied automatically.</p>
         {given && <div className="banner" style={{ margin: '8px 0' }}>Give this temporary password to <b>{given.label}</b>: <code className="uid" style={{ display: 'inline-block' }}>{given.pw}</code> They sign in with their email and this password, then set their own. <button type="button" className="btn small" onClick={() => setGiven(null)}>Done</button></div>}
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Person</th><th>Role</th><th /></tr></thead>
           <tbody>{data.users.map((u) => <React.Fragment key={u.id}><tr><td>{u.name}{u.id === user.id ? ' (you)' : ''}</td>
