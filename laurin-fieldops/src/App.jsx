@@ -46,9 +46,8 @@ function SignIn() {
       <main className="signin"><div className="signin-card">
         <div className="brand"><Mark /><span className="wordmark">LAURIN</span></div>
         <h1>No access yet</h1>
-        <p>You're signed in, but you haven't been added to this project. Send this ID to the project owner:</p>
-        <code className="uid">{userId}</code>
-        <p className="demo-note">Owner: run <code>insert into memberships values ('WCHS', '{userId}', 'Name', 'Owner');</code> in Supabase › SQL Editor (use Super or Viewer for others).</p>
+        <p>You're signed in, but you haven't been added to this project. Ask the project owner to add your email on Setup › People and roles, then reload this page.</p>
+        <p className="demo-note">Your account ID, if they ask: <code className="uid">{userId}</code></p>
         <button type="button" className="btn" onClick={signOut}>Sign out</button>
       </div></main>
     );
