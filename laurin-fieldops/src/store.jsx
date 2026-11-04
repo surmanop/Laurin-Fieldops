@@ -3,7 +3,7 @@ import * as api from '@adapter';
 import * as auth from '@auth';
 import { localToday, isWorking, mondayOf } from './logic/dates.js';
 import { computeTakt, taktItems } from './logic/takt.js';
-import { forecastSchedule } from './logic/forecast.js';
+import { applyDelays, forecastSchedule } from './logic/forecast.js';
 import { applyPlacements } from './logic/mapping.js';
 
 export const VIEWS = [
@@ -64,7 +64,7 @@ export function AppProvider({ children }) {
     const adjustments = data.adjustments || [];
     const FC = forecastSchedule(data.activities, adjustments, data.calendar);
     const TP = computeTakt({ takt: data.takt, activities: FC.rows, calendar: data.calendar, actuals: data.actuals, commitments: data.commitments, constraints: data.constraints, adjustments, today });
-    const items = FC.rows.concat(taktItems(TP, data.takt));
+    const items = applyDelays(FC.rows.concat(taktItems(TP, data.takt)), adjustments, data.calendar);
     return { TP, FC, items, adjustments, zmap: new Map(data.zones.map((z) => [z.code, z])) };
   }, [data, today]);
 
