@@ -18,23 +18,10 @@ export function AdjustForm() {
   const [msg, setMsg] = useState('');
   const W = useMemo(() => makeWorkdays(data.calendar, addDays(a.start, -10), addDays(a.start, 800)), [a, data]);
   const n = mode === 'days' ? Math.max(0, Math.round(+days || 0)) : Math.max(0, W.idx(until) - W.idx(a.start));
-  const target = a.category === 'takt' ? 'tk:' + a.wagon + '|' + a.zones[0] : a.uid;
+  const target = pushTarget(a);
   const close = () => setAdjust(null);
 
-  const preview = useMemo(() => {
-    if (!n) return null;
-    const adj = [...derived.adjustments, { target, days: n }];
-    const FC = forecastSchedule(data.activities, adj, data.calendar);
-    const before = new Map(derived.FC.rows.map((r) => [r.uid, r]));
-    const movedNow = FC.rows.filter((r) => r.shift !== (before.get(r.uid)?.shift || 0));
-    const ms = keyMilestones(FC.rows).map((m) => ({ name: m.name, was: before.get(m.uid)?.finish, now: m.finish }));
-    let takt = null;
-    if (a.category === 'takt') {
-      const TP = computeTakt({ takt: data.takt, activities: FC.rows, calendar: data.calendar, actuals: data.actuals, commitments: data.commitments, constraints: data.constraints, adjustments: adj, today });
-      takt = { was: derived.TP.forecastEnd, now: TP.forecastEnd, cells: TP.cells.filter((c) => c.ff !== derived.TP.cells.find((x) => x.key === c.key)?.ff).length };
-    }
-    return { moved: movedNow.length, top: movedNow.sort((x, y) => y.shift - x.shift).slice(0, 6), ms, takt };
-  }, [n, target]); // eslint-disable-line
+  const preview = usePushPreview(a, n);
 
   const save = async () => {
     if (!n) return setMsg('Enter at least 1 working day, or a date after the current start.');
@@ -58,15 +45,7 @@ export function AdjustForm() {
         <Field label="Reason"><select value={reason} onChange={(e) => setReason(e.target.value)}><option value="">Pick a reason…</option>{REASONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
         <Field label="Note" wide><textarea value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="What's holding it up" /></Field>
       </div>
-      {preview && (
-        <div className="impact">
-          <h3>What this does</h3>
-          <p><b>{a.name}</b> moves {n} working day{n === 1 ? '' : 's'}. {preview.moved > 1 ? `${preview.moved - 1} other activit${preview.moved === 2 ? 'y moves' : 'ies move'} with it through the schedule logic.` : a.category === 'takt' ? '' : 'Nothing else moves: its successors have enough slack.'}</p>
-          {preview.takt && <p>Takt: {preview.takt.cells} wagon-zones move; train finish {fmt(preview.takt.was, 'shortY')} → <b>{fmt(preview.takt.now, 'shortY')}</b>.</p>}
-          {preview.ms.map((m) => <p key={m.name}>{m.name}: {m.now === m.was ? `no change (${fmt(m.now, 'shortY')})` : <>{fmt(m.was, 'shortY')} → <b className="bad">{fmt(m.now, 'shortY')}</b></>}</p>)}
-          {preview.top.length > 1 && <ul className="plain">{preview.top.map((r) => <li key={r.uid}>{r.name} <span className="sub-i">({r.path.split(' › ').slice(-1)[0]})</span> +{r.shift}</li>)}</ul>}
-        </div>
-      )}
+      <PushImpact a={a} n={n} preview={preview} />
       <div className="form-a"><button type="button" className="btn primary" onClick={save}>Push schedule</button><span className="msg bad">{msg}</span></div>
     </Drawer>
   );
@@ -76,4 +55,38 @@ export function NotHappening({ a }) {
   const { can, setAdjust } = useApp();
   if (!can('plan') || a.category === 'site' && a.milestone) return null;
   return <button type="button" className="btn small warnb" onClick={(e) => { e.stopPropagation(); setAdjust(a); }}>Not happening</button>;
+}
+
+// Shared with "Log actual" (status Not worked): what a push would do, before it's saved.
+export const pushTarget = (a) => (a.category === 'takt' ? 'tk:' + a.wagon + '|' + a.zones[0] : a.uid);
+export function usePushPreview(a, n) {
+  const { data, derived, today } = useApp();
+  const target = a ? pushTarget(a) : null;
+  return useMemo(() => {
+    if (!a || !n) return null;
+    const adj = [...derived.adjustments, { target, days: n }];
+    const FC = forecastSchedule(data.activities, adj, data.calendar);
+    const before = new Map(derived.FC.rows.map((r) => [r.uid, r]));
+    const movedNow = FC.rows.filter((r) => r.shift !== (before.get(r.uid)?.shift || 0));
+    const ms = keyMilestones(FC.rows).map((m) => ({ name: m.name, was: before.get(m.uid)?.finish, now: m.finish }));
+    let takt = null;
+    if (a.category === 'takt') {
+      const TP = computeTakt({ takt: data.takt, activities: FC.rows, calendar: data.calendar, actuals: data.actuals, commitments: data.commitments, constraints: data.constraints, adjustments: adj, today });
+      takt = { was: derived.TP.forecastEnd, now: TP.forecastEnd, cells: TP.cells.filter((c) => c.ff !== derived.TP.cells.find((x) => x.key === c.key)?.ff).length };
+    }
+    return { moved: movedNow.length, top: movedNow.sort((x, y) => y.shift - x.shift).slice(0, 6), ms, takt };
+  }, [n, target, derived]); // eslint-disable-line
+}
+export function PushImpact({ a, n, preview }) {
+  return (
+    preview ? (
+        <div className="impact">
+          <h3>What this does</h3>
+          <p><b>{a.name}</b> moves {n} working day{n === 1 ? '' : 's'}. {preview.moved > 1 ? `${preview.moved - 1} other activit${preview.moved === 2 ? 'y moves' : 'ies move'} with it through the schedule logic.` : a.category === 'takt' ? '' : 'Nothing else moves: its successors have enough slack.'}</p>
+          {preview.takt && <p>Takt: {preview.takt.cells} wagon-zones move; train finish {fmt(preview.takt.was, 'shortY')} → <b>{fmt(preview.takt.now, 'shortY')}</b>.</p>}
+          {preview.ms.map((m) => <p key={m.name}>{m.name}: {m.now === m.was ? `no change (${fmt(m.now, 'shortY')})` : <>{fmt(m.was, 'shortY')} → <b className="bad">{fmt(m.now, 'shortY')}</b></>}</p>)}
+          {preview.top.length > 1 && <ul className="plain">{preview.top.map((r) => <li key={r.uid}>{r.name} <span className="sub-i">({r.path.split(' › ').slice(-1)[0]})</span> +{r.shift}</li>)}</ul>}
+        </div>
+    ) : null
+  );
 }

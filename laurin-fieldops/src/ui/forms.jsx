@@ -3,6 +3,7 @@ import { useApp } from '../store.jsx';
 import { Drawer, Field } from './parts.jsx';
 import { STATUSES, REASONS, CTYPES, onZone, overlaps } from '../logic/schedule.js';
 import { addDays, fmt, weekDays } from '../logic/dates.js';
+import { PushImpact, pushTarget, usePushPreview } from './adjust.jsx';
 
 // Zone picker: takt zones, main-floor Areas, unplaced buckets, site.
 function ZoneSelect({ value, onChange }) {
@@ -46,16 +47,25 @@ export function TradeSelect({ value, onChange }) {
 
 export function ActualForm({ zoneKey, onClose }) {
   const { data, derived, day, user, api, write } = useApp();
-  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: '', crew: '', days: '', pct: '', notes: '' });
+  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: '', crew: '', days: '', pct: '', notes: '', push: true, pushDays: 1, reason: '' });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const pool = derived.items.filter((a) => a.start <= day && a.finish >= day);
   const opts = itemsForKey(pool, f.zone);
   const sel = opts.find((a) => String(a.uid) === f.item);
   const [msg, setMsg] = useState('');
+  // "Not worked" on a scheduled item = Not happening: push it (and what depends on it) through the schedule.
+  const canPush = !!sel && f.status === 'Not worked' && !(sel.category === 'site' && sel.milestone);
+  const pushN = canPush && f.push ? Math.max(0, Math.round(+f.pushDays || 0)) : 0;
+  const preview = usePushPreview(canPush ? sel : null, pushN);
   const save = async () => {
     if (!f.zone) return setMsg('Pick a zone or area.');
+    if (pushN && !f.reason) return setMsg('Pick a reason for pushing the schedule.');
+    if (canPush && f.push && !pushN) return setMsg('Enter at least 1 working day to push, or untick the push.');
     if (!sel && !f.notes.trim()) return setMsg('Describe unscheduled work in the notes.');
-    const ok = await write(() => api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() }), 'Actual logged');
+    const ok = await write(async () => {
+      await api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() });
+      if (pushN) await api.saveRecord('adjustments', { target: pushTarget(sel), name: sel.name, path: sel.path, days: pushN, reason: f.reason, note: f.notes.trim(), fromStart: sel.start, by: user.id, at: new Date().toISOString() });
+    }, pushN ? `Actual logged · ${sel.name} pushed ${pushN} working day${pushN === 1 ? '' : 's'}` : 'Actual logged');
     if (ok) onClose();
   };
   return (
@@ -70,6 +80,18 @@ export function ActualForm({ zoneKey, onClose }) {
         <Field label="Duration (days the task took)"><input type="number" min="0" max="999" step="0.5" value={f.days} onChange={(e) => set('days')(e.target.value)} placeholder="optional" /></Field>
         <Field label="Field % complete"><input type="number" min="0" max="100" value={f.pct} onChange={(e) => set('pct')(e.target.value)} /></Field>
         <Field label="Notes (what was done, delays, reasons)" wide><textarea value={f.notes} maxLength={1000} onChange={(e) => set('notes')(e.target.value)} /></Field>
+        {canPush && (
+          <div className="wide push-box">
+            <label className="inline" style={{ color: 'inherit' }}><input type="checkbox" checked={f.push} onChange={(e) => set('push')(e.target.checked)} /> <b>Not happening:</b> push {sel.name} in the schedule</label>
+            {f.push && (
+              <div className="form" style={{ marginTop: 8 }}>
+                <Field label="Working days to push"><input type="number" min="1" max="200" value={f.pushDays} onChange={(e) => set('pushDays')(e.target.value)} /></Field>
+                <Field label="Reason"><select value={f.reason} onChange={(e) => set('reason')(e.target.value)}><option value="">Pick a reason…</option>{REASONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
+              </div>
+            )}
+            {f.push && <PushImpact a={sel} n={pushN} preview={preview} />}
+          </div>
+        )}
         <div className="form-a wide"><button type="button" className="btn primary" onClick={save}>Log actual</button><span className="msg bad">{msg}</span></div>
       </div>
     </Drawer>
