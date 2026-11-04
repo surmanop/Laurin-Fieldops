@@ -21,16 +21,25 @@ const itemsForKey = (items, key) => !key ? [] : key === 'site' ? items.filter((a
 const label = (key) => (key === 'site' ? 'Site / building-wide' : key.startsWith('bucket:') ? key.slice(7) : key);
 const link = (a) => ({ activityUid: a && a.category !== 'takt' ? a.uid : null, wagon: a && a.category === 'takt' ? a.wagon : '', activityName: a ? a.name : '' });
 
-function TradeSelect({ value, onChange }) {
+// "Specialty" is saved with what it is, e.g. "Specialty: Lockers", so manpower and By trade can tell them apart.
+export const SPECIALTY = 'Specialty';
+export const isSpecialty = (t) => t === SPECIALTY || (t || '').startsWith(SPECIALTY + ': ');
+export const specialtyName = (t) => ((t || '').startsWith(SPECIALTY + ': ') ? t.slice(SPECIALTY.length + 2) : '');
+export const specialtyTrade = (name) => (name.trim() ? `${SPECIALTY}: ${name.replace(/^\s+/, '')}` : SPECIALTY); // trimmed again when saved
+
+export function TradeSelect({ value, onChange }) {
   const { data } = useApp();
-  const known = !value || data.trades.includes(value);
+  const spec = isSpecialty(value) && data.trades.includes(SPECIALTY);
+  const known = !value || spec || data.trades.includes(value);
   const [other, setOther] = useState(!known);
+  const sel = other ? '__other' : spec ? SPECIALTY : value;
   return (
     <>
-      <select value={other ? '__other' : value} onChange={(e) => { if (e.target.value === '__other') { setOther(true); onChange(''); } else { setOther(false); onChange(e.target.value); } }}>
+      <select value={sel} onChange={(e) => { const v = e.target.value; if (v === '__other') { setOther(true); onChange(''); } else { setOther(false); onChange(v); } }}>
         <option value="">Choose…</option>{data.trades.map((t) => <option key={t}>{t}</option>)}<option value="__other">Other (type it)</option>
       </select>
       {other && <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Type the trade" maxLength={80} />}
+      {!other && spec && <input value={specialtyName(value)} onChange={(e) => onChange(specialtyTrade(e.target.value))} placeholder="Which specialty? e.g. Lockers" maxLength={60} aria-label="Specialty trade" />}
     </>
   );
 }
@@ -46,7 +55,7 @@ export function ActualForm({ zoneKey, onClose }) {
   const save = async () => {
     if (!f.zone) return setMsg('Pick a zone or area.');
     if (!sel && !f.notes.trim()) return setMsg('Describe unscheduled work in the notes.');
-    const ok = await write(() => api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade, crew: f.crew === '' ? null : +f.crew, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() }), 'Actual logged');
+    const ok = await write(() => api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() }), 'Actual logged');
     if (ok) onClose();
   };
   return (
@@ -76,7 +85,7 @@ export function CommitmentForm({ onClose }) {
   const [msg, setMsg] = useState('');
   const save = async () => {
     if (!f.zone || !f.what.trim()) return setMsg('Pick a zone and describe the commitment.');
-    const ok = await write(() => api.saveRecord('commitments', { week, zone: f.zone, ...link(sel), what: f.what.trim(), trade: f.trade, committedBy: f.who.trim(), due: f.due, status: 'Open', reason: '', by: user.id, at: new Date().toISOString() }), 'Commitment added');
+    const ok = await write(() => api.saveRecord('commitments', { week, zone: f.zone, ...link(sel), what: f.what.trim(), trade: f.trade.trim(), committedBy: f.who.trim(), due: f.due, status: 'Open', reason: '', by: user.id, at: new Date().toISOString() }), 'Commitment added');
     if (ok) onClose();
   };
   return (
@@ -105,7 +114,7 @@ export function ConstraintForm({ onClose }) {
   const [msg, setMsg] = useState('');
   const save = async () => {
     if (!f.zone || !f.what.trim() || !f.need) return setMsg('Pick a zone, describe the constraint and set a need-by date.');
-    const ok = await write(() => api.saveRecord('constraints', { zone: f.zone, ...link(sel), activityStart: sel ? sel.start : '', type: f.type, trade: f.trade, what: f.what.trim(), responsible: f.who.trim(), needBy: f.need, status: 'Open', clearedOn: '', by: user.id, at: new Date().toISOString() }), 'Constraint added');
+    const ok = await write(() => api.saveRecord('constraints', { zone: f.zone, ...link(sel), activityStart: sel ? sel.start : '', type: f.type, trade: f.trade.trim(), what: f.what.trim(), responsible: f.who.trim(), needBy: f.need, status: 'Open', clearedOn: '', by: user.id, at: new Date().toISOString() }), 'Constraint added');
     if (ok) onClose();
   };
   return (
