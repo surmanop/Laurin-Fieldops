@@ -14,7 +14,7 @@ const toCamel = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.r
 const toSnake = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase()), v]));
 
 export async function loadProject() {
-  const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments] = await Promise.all([
+  const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments, invites] = await Promise.all([
     supabase.from('projects').select('*').eq('code', PROJECT).single().then(must),
     sel('zones').order('sort_order').then(must), sel('rooms').then(must), supabase.from('trades').select('*').order('sort_order').then(must),
     sel('area_zones').then(must), sel('calendar_exceptions').then(must), sel('activities').limit(20000).then(must),
@@ -22,6 +22,8 @@ export async function loadProject() {
     sel('wagon_tasks').then(must), sel('zone_rules').order('priority').then(must), supabase.from('members_view').select('*').eq('project', PROJECT).then(must),
     sel('schedule_versions').order('loaded_at', { ascending: false }).then(must),
     sel('actuals').then(must), sel('commitments').then(must), sel('constraints').then(must), sel('schedule_adjustments').order('at').then(must),
+    // Only owners can read invites (row-level security); everyone else gets an empty list.
+    sel('invites').order('invited_at').then(must),
   ]);
   const rt = {}; roomTasks.forEach((r) => { (rt[r.room] ||= {})[r.task] = r.status; });
   const wt = {}; wagonTasks.forEach((r) => { (wt[r.wagon_id] ||= []).push(r.task); });
@@ -41,6 +43,7 @@ export async function loadProject() {
     actuals: actuals.map(toCamel), commitments: commitments.map(toCamel), constraints: constraints.map(toCamel),
     // target: a schedule uid (number) or a takt cell ('tk:w05|Zone 1')
     adjustments: adjustments.map((x) => ({ ...toCamel(x), target: x.target_uid ?? x.target_takt })),
+    invites: invites.map((i) => ({ email: i.email, name: i.display_name, role: i.role, at: i.invited_at?.slice(0, 10) })),
   };
 }
 
@@ -64,5 +67,10 @@ export async function saveTakt(t) {
 export async function saveTrades(list) { must(await supabase.rpc('replace_trades', { p_trades: list })); }
 export async function saveAreaZones(rows) { must(await supabase.rpc('replace_area_zones', { p_project: PROJECT, p_rows: rows })); }
 export async function saveUserRole(id, role) { must(await supabase.from('memberships').update({ role }).eq('project', PROJECT).eq('user_id', id)); }
+// Add a person by email. Returns 'member' if they already have an account (access now), or 'invited'
+// (their role is applied automatically the first time they sign in with that email).
+export async function addMember(email, name, role) { return must(await supabase.rpc('invite_member', { p_project: PROJECT, p_email: email, p_name: name, p_role: role })); }
+export async function setInviteRole(email, role) { must(await supabase.from('invites').update({ role }).eq('project', PROJECT).eq('email', email)); }
+export async function removeInvite(email) { must(await supabase.from('invites').delete().eq('project', PROJECT).eq('email', email)); }
 export async function replaceActivities(rows, version, clearAdjustments = true) { must(await supabase.rpc('replace_activities', { p_project: PROJECT, p_rows: rows, p_version: version, p_clear_adjustments: clearAdjustments })); }
 export async function resetDemo() { throw new Error('Not available in the live app.'); }
