@@ -6,6 +6,7 @@ import { diffSchedules, parseProjectXml } from '../logic/msproject.js';
 import { fmt, localToday } from '../logic/dates.js';
 import { keyMilestones } from '../logic/forecast.js';
 import { Status } from '../ui/parts.jsx';
+import { PlaceButton } from '../ui/place.jsx';
 
 export default function Schedule() {
   const { data, derived, can, api, write } = useApp();
@@ -73,6 +74,7 @@ export default function Schedule() {
           <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Activity</th><th>Baseline</th><th>Forecast</th><th>Push</th></tr></thead>
             <tbody>{pushed.map((r) => <tr key={r.uid}><td>{r.name}<small className="sub">{r.path}</small></td><td>{fmt(r.baseStart)} – {fmt(r.baseFinish, 'shortY')}</td><td>{fmt(r.start)} – {fmt(r.finish, 'shortY')}</td><td>+{r.shift}</td></tr>)}</tbody></table></div></details>}
       </div>
+      <Unplaced />
       <div className="card">
         <h2>Zone placement rules</h2>
         <p className="note">An activity whose schedule group (and name, where given) matches a rule goes to those zones. Main-floor interior Area groups go to every zone in that Area. Everything else is “not placed” or site-wide.</p>
@@ -84,5 +86,37 @@ export default function Schedule() {
         {data.scheduleVersions.length ? <ul className="plain">{data.scheduleVersions.map((v, i) => <li key={i}>{v.name} · status date {fmt(v.statusDate, 'shortY')} · {v.count} activities · loaded {fmt(v.loaded, 'shortY')}</li>)}</ul> : <Empty>None yet.</Empty>}
       </div>
     </section>
+  );
+}
+
+// Every task the rules couldn't put in a zone, by schedule group, with a way to place it. Plus what the team has placed.
+function Unplaced() {
+  const { data, can } = useApp();
+  const [q, setQ] = useState('');
+  const match = (a) => !q.trim() || (a.name + ' ' + (a.trade || '') + ' ' + (a.path || '')).toLowerCase().includes(q.trim().toLowerCase());
+  const open = data.activities.filter((a) => a.category === 'unplaced' && match(a)).sort((x, y) => (x.start < y.start ? -1 : x.start > y.start ? 1 : 0));
+  const placed = data.activities.filter((a) => a.placed && match(a)).sort((x, y) => (x.start < y.start ? -1 : 1));
+  const groups = [...open.reduce((m, a) => m.set(a.bucket, [...(m.get(a.bucket) || []), a]), new Map())].sort((x, y) => x[0].localeCompare(y[0]));
+  const total = data.activities.filter((a) => a.category === 'unplaced').length;
+  const row = (a) => (
+    <tr key={a.uid}><td>{a.name}<small className="sub">{a.path}</small></td><td>{fmt(a.start)} – {fmt(a.finish, 'shortY')}</td><td>{a.trade || ''}</td>
+      <td>{a.placed ? a.zones.join(', ') : ''}</td><td><PlaceButton a={a} /></td></tr>
+  );
+  return (
+    <div className="card" id="unplaced">
+      <div className="card-h"><h2>Tasks not placed in a zone · {total}</h2>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search task, trade or group" aria-label="Search unplaced tasks" style={{ width: 240 }} /></div>
+      <p className="note">The schedule tracks these by Area or group, so the rules can't tell which zones they're in. {can('log') ? 'Use Place in zones to put one in the right zones. Placements stay when an updated schedule is loaded, and can be changed or undone.' : 'Owners and supers can place them in zones.'}</p>
+      {groups.length ? groups.map(([b, list]) => (
+        <details key={b} className="bucket"><summary>{b} <span>· {list.length}</span></summary>
+          <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Task</th><th>Dates</th><th>Trade</th><th /><th /></tr></thead><tbody>{list.map(row)}</tbody></table></div>
+        </details>
+      )) : <Empty>{q ? 'No unplaced task matches.' : 'Every task is in a zone.'}</Empty>}
+      {placed.length > 0 && (
+        <details className="bucket"><summary>Placed by the team <span>· {placed.length}</span></summary>
+          <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Task</th><th>Dates</th><th>Trade</th><th>Zones</th><th /></tr></thead><tbody>{placed.map(row)}</tbody></table></div>
+        </details>
+      )}
+    </div>
   );
 }
