@@ -25,5 +25,6 @@ export async function sendEmailLink(email) {
 export async function setPassword(password) {
   const { error } = await supabase.auth.updateUser({ password, data: { has_password: true, temp_password: false } });
   if (error) throw new Error(error.message);
+  await supabase.auth.refreshSession(); // new token without the temporary-password flag, so editing rights apply again
 }
 export async function signOut() { await supabase.auth.signOut(); }
