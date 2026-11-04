@@ -39,7 +39,7 @@ export default function Day() {
       <div className="card">
         <div className="card-h"><h2>Zone board</h2>
           <div className="seg"><button type="button" className={!showAll ? 'on' : ''} onClick={() => setShowAll(false)}>Zones with work</button><button type="button" className={showAll ? 'on' : ''} onClick={() => setShowAll(true)}>All zones</button></div></div>
-        {TRAINS.map((t) => {
+        {[...TRAINS, ...new Set(data.zones.map((z) => z.train).filter((t) => t && !TRAINS.includes(t)))].map((t) => {
           const zs = zones.filter((z) => z.train === t); if (!zs.length) return null;
           return (
             <div key={t} className="train"><h3>{t}</h3>
