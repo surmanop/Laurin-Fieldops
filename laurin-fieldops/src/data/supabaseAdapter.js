@@ -95,6 +95,10 @@ export async function setTempPassword(args) {
   if (!r.ok) throw new Error(body.error || `Server error ${r.status}`);
   return body;
 }
+// Is the temporary-password server function set up (SUPABASE_SERVICE_ROLE_KEY in Vercel)? Checked before showing those controls.
+export async function tempPasswordReady() {
+  try { const r = await fetch('/api/set-temp-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); return r.status !== 500 && r.status !== 404; } catch (e) { return false; }
+}
 export async function setInviteRole(email, role) { must(await supabase.from('invites').update({ role }).eq('project', PROJECT).eq('email', email)); }
 export async function removeInvite(email) { must(await supabase.from('invites').delete().eq('project', PROJECT).eq('email', email)); }
 export async function replaceActivities(rows, version, clearAdjustments = true) { must(await supabase.rpc('replace_activities', { p_project: PROJECT, p_rows: rows, p_version: version, p_clear_adjustments: clearAdjustments })); }
