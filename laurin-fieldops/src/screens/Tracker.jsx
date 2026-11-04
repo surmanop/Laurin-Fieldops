@@ -17,6 +17,14 @@ export default function Tracker() {
   const { data, derived, can, api, write } = useApp();
   const [zone, setZone] = useState('Zone 1');
   const [edit, setEdit] = useState(null);
+  // Changes show at once; the saved value replaces this when the reload comes back (or it reverts if the save failed).
+  const [pend, setPend] = useState({});
+  const setCell = async (room, task, value) => {
+    const k = room + '|' + task;
+    setPend((p) => ({ ...p, [k]: value }));
+    await write(() => api.setRoomTask(room, task, value), `${room} \u00b7 ${task}: ${value}`);
+    setPend((p) => { const n = { ...p }; delete n[k]; return n; });
+  };
   const rooms = data.rooms.filter((r) => (zone === '__all' ? true : zone === '__none' ? !r.zone : r.zone === zone));
   const done = (t) => { const v = data.rooms.map((r) => data.roomTasks[r.room]?.[t] || 'Not started').filter((x) => x !== 'N/A'); return v.length ? Math.round((100 * v.filter((x) => x === 'Complete').length) / v.length) : null; };
   const check = useMemo(() => planCheck(data, derived), [data, derived]);
@@ -49,9 +57,9 @@ export default function Tracker() {
             {rooms.map((r) => (
               <tr key={r.room}><th className="rh">{r.room}<small>{r.name}</small></th>
                 {data.tasks.map((t) => {
-                  const v = data.roomTasks[r.room]?.[t] || 'Not started'; const k = r.room + '|' + t;
+                  const k = r.room + '|' + t; const v = pend[k] ?? (data.roomTasks[r.room]?.[t] || 'Not started');
                   return <td key={t} className={CLS[v]}>
-                    {edit === k ? <select autoFocus value={v} onBlur={() => setEdit(null)} onChange={(e) => { setEdit(null); write(() => api.setRoomTask(r.room, t, e.target.value), `${r.room} · ${t}: ${e.target.value}`); }}>{TRACKER_STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
+                    {edit === k ? <select autoFocus value={v} onBlur={() => setEdit(null)} onChange={(e) => { setEdit(null); setCell(r.room, t, e.target.value); }}>{TRACKER_STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
                       : <button type="button" disabled={!can('tracker')} onClick={() => setEdit(k)} title={`${r.room} ${t}: ${v}`}>{v === 'Incomplete Progress' ? 'In prog.' : v === 'Not started' ? '' : v}</button>}
                   </td>;
                 })}</tr>))}
