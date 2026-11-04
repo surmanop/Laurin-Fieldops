@@ -75,7 +75,7 @@ export function AppProvider({ children }) {
     adjust, setAdjust, place, setPlace, api, auth, data, derived, error, booted, user, can, view, go, day, setDay, zone, setZone, today, toast, setToast, write, reload,
     signIn: async (id) => { const u = await auth.signIn(id); if (u) { setUserId(u); if (!data) await reload(); } },
     signInWithPassword: async (email, pw) => { const u = await auth.signInWithPassword(email, pw); setUserId(u); await refreshAccount(); await reload(); setSigningIn(false); },
-    setPassword: async (pw) => { await auth.setPassword(pw); await refreshAccount(); },
+    setPassword: async (pw) => { await auth.setPassword(pw); await refreshAccount(); await reload(); },
     userId, member, account, signingIn, setSigningIn,
     signOut: async () => { await auth.signOut(); setUserId(null); setAccount({ email: '', hasPassword: true, temp: false }); await reload(); },
     week: mondayOf(day), working: data ? isWorking(day, data.calendar) : true,

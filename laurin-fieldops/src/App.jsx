@@ -106,7 +106,7 @@ function SignIn() {
 }
 
 // Shown to a signed-in person until they set a password (or close it), so next time they skip the emailed link.
-function SetPassword({ onClose, required }) {
+function SetPassword({ onClose, required, forced }) {
   const { setPassword, setToast, account } = useApp();
   const [pw, setPw] = React.useState('');
   const [pw2, setPw2] = React.useState('');
@@ -123,12 +123,12 @@ function SetPassword({ onClose, required }) {
   return (
     <div className="card pw-card">
       <h2>{account.temp ? 'Set your own password' : required ? 'Set a password' : 'Change password'}</h2>
-      {account.temp ? <p className="note">You signed in with a temporary password from the project owner. Replace it with your own now.</p>
+      {account.temp ? <p className="note">You signed in with a temporary password from the project owner. Set your own before you continue; the temporary one stops working once you do.</p>
         : required && <p className="note">Set a password now and next time you can sign in with your email and password, with no emailed link.</p>}
       <form className="form" onSubmit={save}>
         <label className="field"><span>New password (8+ characters)</span><input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
         <label className="field"><span>Type it again</span><input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>
-        <div className="form-a wide"><button type="submit" className="btn primary" disabled={busy || !pw}>Save password</button><button type="button" className="btn" onClick={onClose}>Not now</button><span className="msg bad">{msg}</span></div>
+        <div className="form-a wide"><button type="submit" className="btn primary" disabled={busy || !pw}>Save password</button>{!forced && <button type="button" className="btn" onClick={onClose}>Not now</button>}<span className="msg bad">{msg}</span></div>
       </form>
     </div>
   );
@@ -165,8 +165,19 @@ function Shell() {
 }
 
 function Gate() {
-  const { booted, data, error, user, userId, auth, signingIn } = useApp();
+  const { booted, data, error, user, userId, auth, signingIn, account, signOut } = useApp();
   if (!booted) return <main className="signin"><div className="signin-card"><p>Loading…</p></div></main>;
+  // Temporary password from the owner: must set their own before using the app (the database also blocks edits until then).
+  if (userId && account.temp) {
+    return (
+      <main className="signin"><div className="signin-card">
+        <div className="brand"><Mark /><span className="wordmark">LAURIN</span></div>
+        <p className="demo-note">Signed in as {account.email}</p>
+        <SetPassword required forced onClose={() => {}} />
+        <button type="button" className="link" onClick={signOut}>Sign out</button>
+      </div></main>
+    );
+  }
   if (auth.publicView) {
     // Anyone can view. Sign-in is only needed to edit.
     if (signingIn && !userId) return <SignIn />;
