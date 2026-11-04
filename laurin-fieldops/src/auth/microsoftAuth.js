@@ -15,12 +15,12 @@ export async function isTempPassword() { return !!(await session())?.user?.user_
 export async function signIn() { await supabase.auth.signInWithOAuth({ provider: 'azure', options: { scopes: 'email openid profile', redirectTo: window.location.origin } }); return null; }
 export async function signInWithPassword(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Wrong email or password. No password yet? Ask the project owner to set a temporary one for you.' : error.message);
+  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Wrong email or password. First time, or no password yet? Use the emailed link below.' : error.message);
   return data.user.id;
 }
 export async function sendEmailLink(email) {
   const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin, shouldCreateUser: true } });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(/rate limit/i.test(error.message) ? 'Too many sign-in emails were sent in the last hour. Please try again later.' : error.message);
 }
 export async function setPassword(password) {
   const { error } = await supabase.auth.updateUser({ password, data: { has_password: true, temp_password: false } });
