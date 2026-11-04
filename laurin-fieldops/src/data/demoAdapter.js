@@ -3,7 +3,7 @@
 import seed from '../seed/wchs.json';
 
 const KEY = 'laurin-fieldops-demo-v1';
-const MUTABLE = ['actuals', 'commitments', 'constraints', 'adjustments', 'roomTasks', 'takt', 'trades', 'areaZones', 'activities', 'users', 'scheduleVersions', 'project', 'manpower'];
+const MUTABLE = ['actuals', 'commitments', 'constraints', 'adjustments', 'roomTasks', 'takt', 'trades', 'areaZones', 'activities', 'users', 'scheduleVersions', 'project', 'manpower', 'placements'];
 let state = null;
 const listeners = new Set();
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -13,6 +13,7 @@ function load() {
   state = clone(seed);
   state.adjustments = state.adjustments || [];
   state.manpower = state.manpower || [];
+  state.placements = state.placements || [];
   try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) MUTABLE.forEach((k) => { if (saved[k] !== undefined) state[k] = saved[k]; }); } catch (e) { /* storage blocked: run from seed */ }
   return state;
 }
@@ -43,3 +44,5 @@ export async function saveManpower(day, rows) {
   });
   persist();
 }
+export async function savePlacement(uid, zones) { load(); state.placements = state.placements.filter((p) => p.uid !== uid).concat({ uid, zones, by: 'peter', at: new Date().toISOString() }); persist(); }
+export async function removePlacement(uid) { load(); state.placements = state.placements.filter((p) => p.uid !== uid); persist(); }
