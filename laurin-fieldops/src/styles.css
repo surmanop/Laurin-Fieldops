@@ -263,3 +263,9 @@ td.off { background: repeating-linear-gradient(45deg, transparent 0 6px, var(--l
 .mp-bar.sel { fill: var(--green-2); }
 .mp-none { stroke: var(--line); stroke-width: 2; }
 .mp-tip { position: absolute; top: 4px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: .82rem; box-shadow: 0 4px 14px rgba(0,0,0,.14); pointer-events: none; min-width: 150px; z-index: 5; display: grid; gap: 2px; }
+/* Place in zones */
+.place-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 6px; }
+.place-z { display: grid; grid-template-columns: auto 1fr; column-gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: .9rem; }
+.place-z span { grid-column: 2; color: var(--muted); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.place-z.on { background: var(--green-soft); border-color: var(--green); }
+.tag.placed { background: var(--green-soft); color: var(--fg); }

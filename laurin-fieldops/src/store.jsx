@@ -4,6 +4,7 @@ import * as auth from '@auth';
 import { localToday, isWorking, mondayOf } from './logic/dates.js';
 import { computeTakt, taktItems } from './logic/takt.js';
 import { forecastSchedule } from './logic/forecast.js';
+import { applyPlacements } from './logic/mapping.js';
 
 export const VIEWS = [
   ['day', 'Day'], ['wwp', 'Weekly plan'], ['trades', 'By trade'], ['lookahead', '6-week lookahead'], ['takt', 'Takt plan'], ['model', '3D zones'], ['tracker', 'Tracker'], ['schedule', 'Schedule import'], ['admin', 'Setup'],
@@ -31,11 +32,12 @@ export function AppProvider({ children }) {
   const [zone, setZone] = useState(null);
   const [toast, setToast] = useState('');
   const [adjust, setAdjust] = useState(null); // schedule item being marked "not happening"
+  const [place, setPlace] = useState(null); // unplaced schedule item being put into zones
   const [signingIn, setSigningIn] = useState(false); // visitor opened the sign-in screen
   const [account, setAccount] = useState({ email: '', hasPassword: true });
   const refreshAccount = useCallback(async () => { if (auth.getEmail) setAccount({ email: await auth.getEmail(), hasPassword: await auth.hasPassword() }); }, []);
 
-  const reload = useCallback(async () => { try { setData(await api.loadProject()); setError(''); } catch (e) { setError(e.message); } }, []);
+  const reload = useCallback(async () => { try { setData(applyPlacements(await api.loadProject())); setError(''); } catch (e) { setError(e.message); } }, []);
   useEffect(() => {
     (async () => {
       const id = await auth.getUser();
@@ -70,7 +72,7 @@ export function AppProvider({ children }) {
   const write = async (fn, done) => { try { await fn(); await reload(); if (done) setToast(done); return true; } catch (e) { setToast('Not saved: ' + e.message); return false; } };
 
   const value = {
-    adjust, setAdjust, api, auth, data, derived, error, booted, user, can, view, go, day, setDay, zone, setZone, today, toast, setToast, write, reload,
+    adjust, setAdjust, place, setPlace, api, auth, data, derived, error, booted, user, can, view, go, day, setDay, zone, setZone, today, toast, setToast, write, reload,
     signIn: async (id) => { const u = await auth.signIn(id); if (u) { setUserId(u); if (!data) await reload(); } },
     signInWithPassword: async (email, pw) => { const u = await auth.signInWithPassword(email, pw); setUserId(u); await refreshAccount(); await reload(); setSigningIn(false); },
     setPassword: async (pw) => { await auth.setPassword(pw); await refreshAccount(); },

@@ -2,6 +2,7 @@ import React from 'react';
 import { AppProvider, useApp, VIEWS } from './store.jsx';
 import { Mark } from './ui/parts.jsx';
 import { AdjustForm } from './ui/adjust.jsx';
+import { PlaceForm } from './ui/place.jsx';
 import Day from './screens/Day.jsx';
 import Wwp from './screens/Wwp.jsx';
 import Lookahead from './screens/Lookahead.jsx';
@@ -133,7 +134,7 @@ function SetPassword({ onClose, required }) {
 }
 
 function Shell() {
-  const { data, user, view, go, signOut, toast, api, adjust, derived, auth, account, setSigningIn } = useApp();
+  const { data, user, view, go, signOut, toast, api, adjust, place, derived, auth, account, setSigningIn } = useApp();
   const visitor = user.role === 'Visitor';
   const views = visitor ? VIEWS.filter(([v]) => v !== 'admin') : VIEWS; // Setup (people and roles) is for the team only
   const Screen = SCREENS[visitor && view === 'admin' ? 'day' : view];
@@ -156,6 +157,7 @@ function Shell() {
         <Screen />
       </main>
       {adjust && <AdjustForm key={adjust.uid} />}
+      {place && <PlaceForm key={place.uid} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
