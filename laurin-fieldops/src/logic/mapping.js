@@ -23,3 +23,16 @@ export function categorize(task, { zoneRules, areaZones }) {
   }
   return { category: 'site', zones: [], area: '', bucket: '', basis: '' };
 }
+
+// Team placements: a schedule activity the rules couldn't place, put into zones by hand (Owner or Super).
+// Kept by MS Project unique ID, so they carry over when an updated schedule is loaded.
+export function applyPlacements(data) {
+  const pl = new Map((data.placements || []).map((p) => [p.uid, p]));
+  if (!pl.size) return data;
+  const activities = data.activities.map((a) => {
+    const p = pl.get(a.uid);
+    if (!p || !p.zones?.length) return a;
+    return { ...a, category: 'zone', zones: p.zones, area: '', placed: { by: p.by, at: p.at, from: a.bucket || a.category, basis: a.basis }, basis: 'Placed by the team' };
+  });
+  return { ...data, activities };
+}
