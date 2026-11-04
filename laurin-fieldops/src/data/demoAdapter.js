@@ -3,7 +3,7 @@
 import seed from '../seed/wchs.json';
 
 const KEY = 'laurin-fieldops-demo-v1';
-const MUTABLE = ['actuals', 'commitments', 'constraints', 'adjustments', 'roomTasks', 'takt', 'trades', 'areaZones', 'activities', 'users', 'scheduleVersions', 'project'];
+const MUTABLE = ['actuals', 'commitments', 'constraints', 'adjustments', 'roomTasks', 'takt', 'trades', 'areaZones', 'activities', 'users', 'scheduleVersions', 'project', 'manpower'];
 let state = null;
 const listeners = new Set();
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -12,6 +12,7 @@ function load() {
   if (state) return state;
   state = clone(seed);
   state.adjustments = state.adjustments || [];
+  state.manpower = state.manpower || [];
   try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) MUTABLE.forEach((k) => { if (saved[k] !== undefined) state[k] = saved[k]; }); } catch (e) { /* storage blocked: run from seed */ }
   return state;
 }
@@ -34,3 +35,11 @@ export async function saveAreaZones(rows) { load(); state.areaZones = rows; pers
 export async function saveUserRole(id, role) { load(); state.users = state.users.map((u) => (u.id === id ? { ...u, role } : u)); persist(); }
 export async function replaceActivities(rows, version, clearAdjustments = true) { load(); state.activities = rows; if (clearAdjustments) state.adjustments = []; state.scheduleVersions = [version, ...state.scheduleVersions]; state.project = { ...state.project, statusDate: version.statusDate || state.project.statusDate }; persist(); }
 export async function resetDemo() { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } state = null; load(); listeners.forEach((fn) => fn()); }
+export async function saveManpower(day, rows) {
+  load();
+  rows.forEach(({ trade, headcount }) => {
+    state.manpower = state.manpower.filter((m) => !(m.day === day && m.trade === trade));
+    if (headcount != null) state.manpower.push({ day, trade, headcount });
+  });
+  persist();
+}

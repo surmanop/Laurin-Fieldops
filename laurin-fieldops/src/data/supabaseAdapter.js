@@ -14,7 +14,7 @@ const toCamel = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.r
 const toSnake = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase()), v]));
 
 export async function loadProject() {
-  const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments, invites] = await Promise.all([
+  const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments, invites, manpower] = await Promise.all([
     supabase.from('projects').select('*').eq('code', PROJECT).single().then(must),
     sel('zones').order('sort_order').then(must), sel('rooms').then(must), supabase.from('trades').select('*').order('sort_order').then(must),
     sel('area_zones').then(must), sel('calendar_exceptions').then(must), sel('activities').limit(20000).then(must),
@@ -24,6 +24,7 @@ export async function loadProject() {
     sel('actuals').then(must), sel('commitments').then(must), sel('constraints').then(must), sel('schedule_adjustments').order('at').then(must),
     // Only owners can read invites (row-level security); everyone else gets an empty list.
     sel('invites').order('invited_at').then(must),
+    sel('manpower').order('day').limit(50000).then(must),
   ]);
   const rt = {}; roomTasks.forEach((r) => { (rt[r.room] ||= {})[r.task] = r.status; });
   const wt = {}; wagonTasks.forEach((r) => { (wt[r.wagon_id] ||= []).push(r.task); });
@@ -43,6 +44,7 @@ export async function loadProject() {
     actuals: actuals.map(toCamel), commitments: commitments.map(toCamel), constraints: constraints.map(toCamel),
     // target: a schedule uid (number) or a takt cell ('tk:w05|Zone 1')
     adjustments: adjustments.map((x) => ({ ...toCamel(x), target: x.target_uid ?? x.target_takt })),
+    manpower: manpower.map((m) => ({ day: m.day, trade: m.trade, headcount: m.headcount })),
     invites: invites.map((i) => ({ email: i.email, name: i.display_name, role: i.role, at: i.invited_at?.slice(0, 10) })),
   };
 }
@@ -51,6 +53,13 @@ export async function loadProject() {
 export function subscribe(fn) {
   const ch = supabase.channel('fieldops').on('postgres_changes', { event: '*', schema: 'public' }, () => fn()).subscribe(); // includes schedule_adjustments
   return () => supabase.removeChannel(ch);
+}
+// Daily site headcount: rows [{ trade, headcount }]; headcount null removes that trade for the day.
+export async function saveManpower(day, rows) {
+  const up = rows.filter((r) => r.headcount != null).map((r) => ({ project: PROJECT, day, trade: r.trade, headcount: r.headcount }));
+  const del = rows.filter((r) => r.headcount == null).map((r) => r.trade);
+  if (up.length) must(await supabase.from('manpower').upsert(up));
+  if (del.length) must(await supabase.from('manpower').delete().eq('project', PROJECT).eq('day', day).in('trade', del));
 }
 const TABLE = { actuals: 'actuals', commitments: 'commitments', constraints: 'constraints', adjustments: 'schedule_adjustments' };
 export async function saveRecord(table, rec) {
