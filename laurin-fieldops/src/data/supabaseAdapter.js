@@ -26,6 +26,10 @@ async function selAll(t, keys) {
 const toCamel = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]));
 const toSnake = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase()), v]));
 
+// Tracker columns in construction sequence (the original WCHS tracker order). Rooms load sorted by task name, so re-sort here.
+const TASK_ORDER = ['Fire Spray', 'Intumescent Paint', 'Masonry', 'Steel Stud', 'Plumbing Rough-ins', 'Electrical Rough-ins', 'HVAC Rough-ins', 'Sprinkler Rough-ins', 'Controls', 'Bulkheads', 'Backing', 'Drywall', 'Taping', 'Prime/Intermediate', 'T-Bar Grid', 'Ceiling Finishes', 'Millwork', 'Wall Tile', 'Doors & Hardware', 'Ceiling Tile', 'MEP Finishes', 'Flooring', 'Stage 2 Finishes', 'Final Paint', 'Deficiencies', 'Final Clean'];
+const taskRank = (t) => { const i = TASK_ORDER.indexOf(t); return i < 0 ? TASK_ORDER.length : i; };
+
 export async function loadProject() {
   const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments, invites, manpower, placements] = await Promise.all([
     supabase.from('projects').select('*').eq('code', PROJECT).single().then(must),
@@ -51,7 +55,7 @@ export async function loadProject() {
     calendar: calendar.map((c) => ({ name: c.name, from: c.from_date, to: c.to_date })),
     activities: activities.map((a) => ({ ...toCamel(a), uid: a.schedule_uid, zones: a.zones || [], preds: a.preds || [] })),
     takt: { start: takt.train_start, taktDays: takt.takt_days, train: takt.train_order, note: takt.baseline_note, wagons: wagons.map((w) => ({ id: w.wagon_id, name: w.name, trade: w.trade, match: w.schedule_match || [], skip: w.skip_zones || [] })) },
-    tasks: [...new Set(roomTasks.map((r) => r.task))], roomTasks: rt, wagonTasks: wt,
+    tasks: [...new Set(roomTasks.map((r) => r.task))].sort((a, b) => taskRank(a) - taskRank(b) || a.localeCompare(b)), roomTasks: rt, wagonTasks: wt,
     zoneRules: zoneRules.map((r) => ({ group: r.schedule_group, name: r.name_pattern, floor: r.floor, zones: r.zones, basis: r.basis })),
     users: users.map((u) => ({ id: u.user_id, name: u.display_name, role: u.role })),
     scheduleVersions: versions.map((v) => ({ name: v.name, statusDate: v.status_date, loaded: v.loaded_at?.slice(0, 10), count: v.activity_count })),
