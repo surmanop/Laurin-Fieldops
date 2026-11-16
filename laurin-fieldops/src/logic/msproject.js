@@ -5,6 +5,11 @@ export function parseProjectXml(text) {
   if (doc.querySelector('parsererror')) throw new Error('This file is not valid XML. In MS Project use File › Save As › XML.');
   const g = (el, n) => el.getElementsByTagName(n)[0]?.textContent ?? '';
   const statusDate = g(doc.documentElement, 'StatusDate').slice(0, 10);
+  // Resources (Resource tab) and which resource each task is assigned to; used as the task's trade.
+  const resName = new Map([...doc.getElementsByTagName('Resource')].map((r) => [g(r, 'UID'), g(r, 'Name').replace(/\s+/g, ' ').trim()]).filter(([, n]) => n));
+  const byTask = new Map();
+  [...doc.getElementsByTagName('Assignment')].forEach((a) => { const n = resName.get(g(a, 'ResourceUID')); if (n) byTask.set(g(a, 'TaskUID'), [...(byTask.get(g(a, 'TaskUID')) || []), n]); });
+  const resources = [...resName.values()];
   const tasks = [...doc.getElementsByTagName('Task')];
   if (!tasks.length) throw new Error('No tasks found. Is this an MS Project XML file?');
   const stack = []; const out = [];
@@ -17,9 +22,9 @@ export function parseProjectXml(text) {
     // PredecessorLink Type: 0 FF, 1 FS, 2 SF, 3 SS. LinkLag is in tenths of a minute: 4800 = one 8-hour working day,
     // 14400 = one elapsed (24-hour) day when LagFormat is an elapsed unit. Elapsed lags are then counted as working days.
     const preds = [...t.getElementsByTagName('PredecessorLink')].map((l) => [+g(l, 'PredecessorUID'), ['FF', 'FS', 'SF', 'SS'][+g(l, 'Type')] || 'FS', Math.round((+g(l, 'LinkLag') || 0) / ([4, 6, 8, 10, 12].includes(+g(l, 'LagFormat')) ? 14400 : 4800))]);
-    out.push({ uid: +g(t, 'UID'), name, path, start: g(t, 'Start').slice(0, 10), finish: g(t, 'Finish').slice(0, 10), pct: +g(t, 'PercentComplete') || 0, milestone: g(t, 'Milestone') === '1', critical: g(t, 'Critical') === '1', trade: '', preds });
+    out.push({ uid: +g(t, 'UID'), name, path, start: g(t, 'Start').slice(0, 10), finish: g(t, 'Finish').slice(0, 10), pct: +g(t, 'PercentComplete') || 0, milestone: g(t, 'Milestone') === '1', critical: g(t, 'Critical') === '1', trade: [...new Set(byTask.get(g(t, 'UID')) || [])].join(', '), preds });
   });
-  return { statusDate, tasks: out };
+  return { statusDate, tasks: out, resources };
 }
 
 export function diffSchedules(oldRows, newRows) {
