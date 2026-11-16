@@ -4,7 +4,8 @@ import { DateBar, Matrix } from '../ui/common.jsx';
 import { Empty, Kpi } from '../ui/parts.jsx';
 import { CommitmentForm, zoneLabel } from '../ui/forms.jsx';
 import { groupRows, isFor, overlaps, ppc, REASONS } from '../logic/schedule.js';
-import { addDays, fmt, shutdownOn, weekDays } from '../logic/dates.js';
+import { addDays, fmt, localToday, shutdownOn, weekDays } from '../logic/dates.js';
+import { downloadXlsx, matrixRows, printReport } from '../logic/exportFile.js';
 
 export default function Wwp() {
   const { data, derived, week, can, api, write, user } = useApp();
@@ -19,11 +20,31 @@ export default function Wwp() {
   const reasons = [...misses.reduce((m, c) => m.set(c.reason || 'No reason given', (m.get(c.reason || 'No reason given') || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
   const byTrade = [...cm.reduce((m, c) => m.set(c.trade || 'No trade given', [...(m.get(c.trade || 'No trade given') || []), c]), new Map())].map(([t, rows]) => [t, ppc(rows)]);
   const ents = data.actuals.filter((e) => e.day >= week && e.day <= addDays(week, 4));
+  // Export: the same commitments, PPC and work plan as this screen, for emailing.
+  const tag = (a) => { const k = cm.filter((x) => isFor(x, a)); return !k.length ? '' : k.every((x) => x.status === 'Complete') ? ' [Committed \u2713]' : k.some((x) => x.status === 'Not complete') ? ' [Committed \u2717]' : ' [Committed]'; };
+  const report = () => {
+    const com = [['Zone', 'Commitment', 'Schedule activity', 'Trade', 'Committed by', 'Due', 'Status', 'Reason if missed'],
+      ...cm.map((c) => [zoneLabel(c.zone), c.what, c.activityName && c.activityName !== c.what ? c.activityName : '', c.trade, c.committedBy, c.due ? fmt(c.due, 'wk') : 'End of week', c.status, c.status === 'Not complete' ? c.reason : ''])];
+    if (com.length === 1) com.push(['No commitments for this week yet.']);
+    const pr = [['Measure', 'Value'], ['PPC this week', P.pct == null ? '\u2014' : P.pct + '%'], ['Completed of committed', `${P.done} of ${P.total}`]]; const ph = [];
+    const sec = (t, list) => { ph.push(pr.length); pr.push([t]); pr.push(...(list.length ? list : [['None']])); };
+    sec('PPC, last 8 weeks', trend.map((t) => ['Week of ' + fmt(t.w, 'shortY'), t.pct == null ? '\u2014' : `${t.pct}% (${t.done} of ${t.total})`]));
+    sec('PPC by trade, this week', byTrade.map(([t, p]) => [t, `${p.pct}% (${p.done} of ${p.total})`]));
+    sec('Reasons for misses, last 8 weeks', reasons.map(([r, n]) => [r, n]));
+    const m = matrixRows(groupRows(inWeek, data.zones), cols, (r, c) => r.items.filter((a) => a.start <= c.key && a.finish >= c.key).map((a) => (a.start === c.key ? '\u25b6 ' : '') + a.name + (a.critical ? ' (critical)' : '') + (a.shift > 0 ? ` (pushed +${a.shift}d)` : '') + tag(a) + ents.filter((e) => e.day === c.key && isFor(e, a)).map((e) => ' \u00b7 ' + e.status).join('')).join('\n'));
+    return {
+      title: `${data.project.code} ${data.project.name} \u00b7 Weekly work plan`,
+      subtitle: `Week of ${fmt(week, 'shortY')} \u00b7 exported ${fmt(localToday(), 'shortY')}${user?.name && user.role !== 'Visitor' ? ' by ' + user.name : ''}`,
+      file: `${data.project.code}_Weekly-work-plan_${week}`,
+      sheets: [{ name: 'Commitments', rows: com }, { name: 'PPC', rows: pr, heads: ph, widths: [36, 24] }, { name: 'Work plan', note: '\u25b6 = starts that day', ...m }],
+    };
+  };
   const upd = (c, patch) => write(() => api.saveRecord('commitments', { ...c, ...patch, updatedBy: user.id, updatedAt: new Date().toISOString() }), 'Commitment updated');
 
   return (
     <section className="screen">
       <DateBar weekly />
+      <div className="row"><span className="inline">Export this week to email:</span><button type="button" className="btn small" onClick={() => downloadXlsx(report())}>Excel (.xlsx)</button><button type="button" className="btn small" onClick={() => printReport(report())}>Print / PDF</button></div>
       <div className="kpis">
         <Kpi v={inWeek.length} l="Activities this week (incl. takt)" />
         <Kpi v={inWeek.filter((a) => a.start >= week && a.start <= addDays(week, 6)).length} l="Starting this week" />
