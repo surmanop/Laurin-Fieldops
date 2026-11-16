@@ -12,18 +12,24 @@ export default function Schedule() {
   const { data, derived, can, api, write } = useApp();
   const [pending, setPending] = useState(null);
   const [clearAdj, setClearAdj] = useState(true);
+  const [useRes, setUseRes] = useState(true);
   const [err, setErr] = useState('');
   const onFile = async (file) => {
     setErr(''); setPending(null);
     if (!file) return;
     if (/\.mpp$/i.test(file.name)) { setErr('.mpp files are read by the server importer in the live app. In this demo, export from MS Project with File › Save As › XML and upload that.'); return; }
     try {
-      const { statusDate, tasks } = parseProjectXml(await file.text());
+      const { statusDate, tasks, resources } = parseProjectXml(await file.text());
       const rows = tasks.map((t) => ({ ...t, ...categorize(t, data) }));
-      setPending({ name: file.name.replace(/\.xml$/i, ''), statusDate, rows, diff: diffSchedules(data.activities, rows) });
+      // The Resource tab becomes the trade list. "ALL" isn't a trade: its tasks show under every trade on By trade.
+      const trades = [...new Set(resources.filter((r) => r.toUpperCase() !== 'ALL' && rows.some((x) => x.trade.split(', ').includes(r))))];
+      setPending({ name: file.name.replace(/\.xml$/i, ''), statusDate, rows, trades, diff: diffSchedules(data.activities, rows) });
     } catch (e) { setErr(e.message); }
   };
-  const apply = () => write(() => api.replaceActivities(pending.rows, { name: pending.name, statusDate: pending.statusDate, loaded: localToday(), count: pending.rows.length }, clearAdj), 'Schedule updated').then((ok) => ok && setPending(null));
+  const apply = () => write(async () => {
+    await api.replaceActivities(pending.rows, { name: pending.name, statusDate: pending.statusDate, loaded: localToday(), count: pending.rows.length }, clearAdj);
+    if (useRes && pending.trades.length) await api.saveTrades(pending.trades);
+  }, useRes && pending.trades.length ? 'Schedule and trade list updated' : 'Schedule updated').then((ok) => ok && setPending(null));
   const adj = derived.adjustments; const ms = keyMilestones(derived.FC.rows); const pushed = derived.FC.rows.filter((r) => r.shift > 0).sort((a, b) => b.shift - a.shift);
   const cats = (rows) => ['zone', 'areawide', 'unplaced', 'site'].map((c) => rows.filter((a) => a.category === c).length);
   const [z, aw, un, si] = cats(data.activities);
@@ -52,6 +58,7 @@ export default function Schedule() {
           {pending.diff.moved.length > 0 && <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Activity</th><th>Was</th><th>Now</th></tr></thead>
             <tbody>{pending.diff.moved.slice(0, 60).map(({ a, was }) => <tr key={a.uid}><td>{a.name}<small className="sub">{a.path}</small></td><td>{fmt(was.start)} – {fmt(was.finish)}</td><td>{fmt(a.start)} – {fmt(a.finish)}</td></tr>)}</tbody></table></div>}
           {adj.length > 0 && <label className="inline"><input type="checkbox" checked={clearAdj} onChange={(e) => setClearAdj(e.target.checked)} /> Clear the {adj.length} schedule change{adj.length === 1 ? '' : 's'} pushed since the last update (the new schedule should already include them)</label>}
+          {pending.trades.length > 0 && <label className="inline"><input type="checkbox" checked={useRes} onChange={(e) => setUseRes(e.target.checked)} /> Replace the trade list with this schedule's {pending.trades.length} resources: {pending.trades.join(', ')}. Tasks assigned to ALL show under every trade.</label>}
           <div className="row"><button type="button" className="btn primary" onClick={apply}>Apply update</button><button type="button" className="btn" onClick={() => setPending(null)}>Cancel</button></div>
         </div>
       )}
