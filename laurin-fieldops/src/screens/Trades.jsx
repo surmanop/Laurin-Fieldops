@@ -118,6 +118,7 @@ export default function Trades() {
               <div className="form-a" style={{ marginTop: 12 }}><button type="button" className="btn primary" onClick={save}>Log in {codes.length || ''} zone{codes.length === 1 ? '' : 's'}</button><button type="button" className="btn" onClick={() => setPicked({})} disabled={!codes.length}>Clear zones</button><span className="msg bad">{msg}</span></div>
             </div>
           )}
+          <TradeTasks trade={trade} />
           <div className="card">
             <h2>{trade} by zone · week of {fmt(week, 'shortY')}</h2>
             {byZone.length ? byZone.map(([code, list]) => (
@@ -133,5 +134,29 @@ export default function Trades() {
         </>
       )}
     </section>
+  );
+}
+
+// Schedule tasks assigned to this trade (the schedule's Resource), plus tasks assigned to ALL.
+const RANGES = [['week', 'This week'], ['six', 'Next 6 weeks'], ['all', 'Whole schedule']];
+const hasTrade = (a, t) => (a.trade || '').split(', ').some((x) => x === t || x.toUpperCase() === 'ALL');
+function TradeTasks({ trade }) {
+  const { derived, day } = useApp();
+  const [range, setRange] = useState('week');
+  const from = mondayOf(day), to = range === 'week' ? addDays(from, 6) : addDays(from, 41);
+  const list = derived.items.filter((a) => a.category !== 'takt' && hasTrade(a, trade) && (range === 'all' || (a.start <= to && a.finish >= from)))
+    .sort((x, y) => (x.start < y.start ? -1 : x.start > y.start ? 1 : (x.zones[0] || '').localeCompare(y.zones[0] || '', undefined, { numeric: true })));
+  const where = (a) => (a.zones.length ? a.zones.join(', ') : a.bucket || a.path.split(' \u203a ').slice(-1)[0] || 'Site');
+  return (
+    <div className="card">
+      <div className="card-h"><h2>{trade} · scheduled tasks</h2>
+        <div className="seg">{RANGES.map(([k, l]) => <button type="button" key={k} className={range === k ? 'on' : ''} onClick={() => setRange(k)}>{l}</button>)}</div></div>
+      <p className="note">From the schedule's Resource assignments{range === 'all' ? '' : `, ${range === 'week' ? 'week of ' + fmt(from, 'shortY') : fmt(from, 'shortY') + ' \u2013 ' + fmt(to, 'shortY')}`}. Tasks assigned to ALL are included.</p>
+      {list.length ? (
+        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Zone</th><th>Task</th><th>Start</th><th>Finish</th><th>Assigned</th><th>%</th></tr></thead>
+          <tbody>{list.map((a) => (
+            <tr key={a.uid} className={a.shift > 0 ? 'od' : ''}><td>{where(a)}</td><td>{a.name}{a.shift > 0 && <small className="sub">Pushed +{a.shift} working days</small>}</td><td className="nowrap">{fmt(a.start, 'wk')}</td><td className="nowrap">{fmt(a.finish, 'shortY')}</td><td>{a.trade}</td><td>{Math.round(+a.pct || 0)}%</td></tr>))}</tbody></table></div>
+      ) : <Empty>No {trade} tasks in the schedule {range === 'all' ? '' : 'for this period'}.</Empty>}
+    </div>
   );
 }
