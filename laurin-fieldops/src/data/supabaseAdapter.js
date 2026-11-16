@@ -54,7 +54,7 @@ export async function loadProject() {
     areaZones: areaZones.map((a) => ({ area: a.area, group: a.schedule_group, zone: a.zone_code })),
     calendar: calendar.map((c) => ({ name: c.name, from: c.from_date, to: c.to_date })),
     activities: activities.map((a) => ({ ...toCamel(a), uid: a.schedule_uid, zones: a.zones || [], preds: a.preds || [] })),
-    takt: { start: takt.train_start, taktDays: takt.takt_days, train: takt.train_order, note: takt.baseline_note, wagons: wagons.map((w) => ({ id: w.wagon_id, name: w.name, trade: w.trade, match: w.schedule_match || [], skip: w.skip_zones || [] })) },
+    takt: { start: takt.train_start, taktDays: takt.takt_days, train: takt.train_order, note: takt.baseline_note, trains: trainsFromNote(takt.baseline_note), wagons: wagons.map((w) => ({ id: w.wagon_id, name: w.name, trade: w.trade, match: w.schedule_match || [], skip: w.skip_zones || [] })) },
     tasks: [...new Set(roomTasks.map((r) => r.task))].sort((a, b) => taskRank(a) - taskRank(b) || a.localeCompare(b)), roomTasks: rt, wagonTasks: wt,
     zoneRules: zoneRules.map((r) => ({ group: r.schedule_group, name: r.name_pattern, floor: r.floor, zones: r.zones, basis: r.basis })),
     users: users.map((u) => ({ id: u.user_id, name: u.display_name, role: u.role })),
@@ -94,8 +94,13 @@ export async function saveRecord(table, rec) {
 }
 export async function deleteRecord(table, id) { must(await supabase.from(TABLE[table]).delete().eq('id', id)); }
 export async function setRoomTask(room, task, status) { must(await supabase.from('room_tasks').upsert({ project: PROJECT, room, task, status })); }
+// Several trains are kept as JSON in takt_settings.baseline_note ({ trains: [{ id, name, start, train, wagonIds }] }).
+// train_start / train_order still hold the first train, so older readers keep working.
+function trainsFromNote(note) { try { const j = JSON.parse(note || ''); return Array.isArray(j?.trains) && j.trains.length ? j.trains : null; } catch { return null; } }
 export async function saveTakt(t) {
-  must(await supabase.from('takt_settings').update({ train_start: t.start, takt_days: t.taktDays, train_order: t.train }).eq('project', PROJECT));
+  const trains = t.trains?.length ? t.trains : null;
+  const first = trains ? trains[0] : t;
+  must(await supabase.from('takt_settings').update({ train_start: first.start, takt_days: t.taktDays, train_order: first.train, baseline_note: trains ? JSON.stringify({ trains }) : (trainsFromNote(t.note) ? null : t.note ?? null) }).eq('project', PROJECT));
   must(await supabase.rpc('replace_wagons', { p_project: PROJECT, p_wagons: t.wagons }));
 }
 export async function saveTrades(list) { must(await supabase.rpc('replace_trades', { p_trades: list })); }
