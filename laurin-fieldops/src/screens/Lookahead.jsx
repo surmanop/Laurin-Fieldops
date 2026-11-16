@@ -5,6 +5,7 @@ import { Empty } from '../ui/parts.jsx';
 import { ConstraintForm, zoneLabel } from '../ui/forms.jsx';
 import { groupRows, isFor, overlaps } from '../logic/schedule.js';
 import { addDays, fmt, isWorking, localToday, weekDays } from '../logic/dates.js';
+import { downloadXlsx, matrixRows, printReport } from '../logic/exportFile.js';
 
 export default function Lookahead() {
   const { data, derived, week, can, api, write, user } = useApp();
@@ -17,11 +18,26 @@ export default function Lookahead() {
   const today = localToday(), soon = addDays(today, 7);
   const open = data.constraints.filter((c) => c.status !== 'Cleared');
   const rows = (openOnly ? open : data.constraints).slice().sort((a, b) => (a.status === 'Cleared') - (b.status === 'Cleared') || a.needBy.localeCompare(b.needBy));
+  // Export: the same summary, constraints and lookahead as this screen (with its Open/All and Starting-only choices), for emailing.
+  const report = () => {
+    const sum = [['Week of', 'Working days', 'Activities', 'Starting', 'Open constraints due'], ...weeks.map((c) => { const inW = derived.items.filter((a) => overlaps(a, c.days)); return [fmt(c.key, 'shortY'), c.days.length, inW.length, inW.filter((a) => starts(a, c)).length, open.filter((k) => k.needBy >= c.key && k.needBy <= addDays(c.key, 6)).length]; })];
+    const con = [['Need by', 'Zone', 'Activity', 'Activity starts', 'Trade', 'Type', 'Constraint', 'Responsible', 'Status'],
+      ...rows.map((c) => [fmt(c.needBy, 'shortY'), zoneLabel(c.zone), c.activityName || '', c.activityStart ? fmt(c.activityStart, 'shortY') : '', c.trade, c.type, c.what, c.responsible, c.status === 'Cleared' ? 'Cleared ' + fmt(c.clearedOn) : c.needBy < today ? 'Open \u00b7 past need-by' : c.needBy <= soon ? 'Open \u00b7 due within 7 days' : 'Open'])];
+    if (con.length === 1) con.push([openOnly ? 'No open constraints.' : 'No constraints logged yet.']);
+    const m = matrixRows(groupRows(pool, data.zones), weeks, (r, c) => r.items.filter((a) => overlaps(a, c.days) && (!startOnly || starts(a, c))).map((a) => { const k = open.filter((x) => isFor(x, a)).length; return (starts(a, c) ? '\u25b6 ' : '') + a.name + (starts(a, c) ? ` (starts ${fmt(a.start)})` : '') + (k ? ` \u26a0 ${k} open constraint${k === 1 ? '' : 's'}` : ''); }).join('\n'));
+    return {
+      title: `${data.project.code} ${data.project.name} \u00b7 6-week lookahead`,
+      subtitle: `Weeks of ${fmt(weeks[0].key, 'shortY')} \u2013 ${fmt(weeks[5].key, 'shortY')} \u00b7 exported ${fmt(today, 'shortY')}${user?.name && user.role !== 'Visitor' ? ' by ' + user.name : ''}`,
+      file: `${data.project.code}_6-week-lookahead_${weeks[0].key}`,
+      sheets: [{ name: 'Six weeks', rows: sum }, { name: openOnly ? 'Open constraints' : 'Constraints', rows: con }, { name: 'Lookahead', note: (startOnly ? 'Activities starting each week (make-ready). ' : '') + '\u25b6 = starts that week; \u26a0 = open constraint', ...m }],
+    };
+  };
   const toggle = (c) => write(() => api.saveRecord('constraints', { ...c, status: c.status === 'Cleared' ? 'Open' : 'Cleared', clearedOn: c.status === 'Cleared' ? '' : today, updatedBy: user.id }), 'Constraint updated');
 
   return (
     <section className="screen">
       <DateBar weekly />
+      <div className="row"><span className="inline">Export this lookahead to email:</span><button type="button" className="btn small" onClick={() => downloadXlsx(report())}>Excel (.xlsx)</button><button type="button" className="btn small" onClick={() => printReport(report())}>Print / PDF</button></div>
       <div className="card">
         <h2>Six weeks from {fmt(week, 'shortY')}</h2>
         <div className="tbl-wrap"><table className="tbl num"><thead><tr><th>Week of</th><th>Working days</th><th>Activities</th><th>Starting</th><th>Open constraints due</th></tr></thead>
