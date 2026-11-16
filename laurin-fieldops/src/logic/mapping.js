@@ -1,9 +1,11 @@
 // Places schedule activities into zones. The rules live in the database (zoneRules, areaZones) so the
 // owner can change them without code. Same logic runs in the browser (XML import) and in server/importer.
-export function categorize(task, { zoneRules, areaZones }) {
+export function categorize(task, { zoneRules, areaZones, zones = [] }) {
   const chain = task.path ? task.path.split(' › ') : [];
   const top = chain[0] || '';
   const group = chain[chain.length - 1] || '';
+  // Zone-based schedules (e.g. "Zone Schedule"): a task grouped under a takt zone code goes to that zone.
+  if (group && zones.some((z) => z.code === group)) return { category: 'zone', zones: [group], area: '', bucket: '', basis: `Schedule group '${group}'` };
   const floor = chain.includes('Second Floor') ? 'L2' : chain.includes('Main Floor') ? 'L1' : '';
   for (const r of zoneRules) {
     if (r.group !== group) continue;
@@ -31,7 +33,7 @@ export function applyPlacements(data) {
   if (!pl.size) return data;
   const activities = data.activities.map((a) => {
     const p = pl.get(a.uid);
-    if (!p || !p.zones?.length) return a;
+    if (!p || !p.zones?.length || a.category !== 'unplaced') return a; // only tasks the rules couldn't place
     return { ...a, category: 'zone', zones: p.zones, area: '', placed: { by: p.by, at: p.at, from: a.bucket || a.category, basis: a.basis }, basis: 'Placed by the team' };
   });
   return { ...data, activities };
