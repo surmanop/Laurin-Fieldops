@@ -44,7 +44,7 @@ export async function loadProject() {
     selAll('manpower', ['day', 'trade']),
     selAll('zone_placements', ['schedule_uid']),
   ]);
-  const rt = {}; roomTasks.forEach((r) => { (rt[r.room] ||= {})[r.task] = r.status; });
+  const rt = {}, rta = {}; roomTasks.forEach((r) => { (rt[r.room] ||= {})[r.task] = r.status; (rta[r.room] ||= {})[r.task] = r.updated_at || null; });
   const wt = {}; wagonTasks.forEach((r) => { (wt[r.wagon_id] ||= []).push(r.task); });
   return {
     project: { code: project.code, name: project.name, address: project.address, statusDate: project.status_date },
@@ -55,7 +55,7 @@ export async function loadProject() {
     calendar: calendar.map((c) => ({ name: c.name, from: c.from_date, to: c.to_date })),
     activities: activities.map((a) => ({ ...toCamel(a), uid: a.schedule_uid, zones: a.zones || [], preds: a.preds || [] })),
     takt: { start: takt.train_start, taktDays: takt.takt_days, train: takt.train_order, note: takt.baseline_note, trains: trainsFromNote(takt.baseline_note), wagons: wagons.map((w) => ({ id: w.wagon_id, name: w.name, trade: w.trade, match: w.schedule_match || [], skip: w.skip_zones || [] })) },
-    tasks: [...new Set(roomTasks.map((r) => r.task))].sort((a, b) => taskRank(a) - taskRank(b) || a.localeCompare(b)), roomTasks: rt, wagonTasks: wt,
+    tasks: [...new Set(roomTasks.map((r) => r.task))].sort((a, b) => taskRank(a) - taskRank(b) || a.localeCompare(b)), roomTasks: rt, roomTaskAt: rta, wagonTasks: wt,
     zoneRules: zoneRules.map((r) => ({ group: r.schedule_group, name: r.name_pattern, floor: r.floor, zones: r.zones, basis: r.basis })),
     users: users.map((u) => ({ id: u.user_id, name: u.display_name, role: u.role })),
     scheduleVersions: versions.map((v) => ({ name: v.name, statusDate: v.status_date, loaded: v.loaded_at?.slice(0, 10), count: v.activity_count })),
