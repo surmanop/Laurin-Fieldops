@@ -7,7 +7,7 @@ import { applyDelays, forecastSchedule } from './logic/forecast.js';
 import { applyPlacements } from './logic/mapping.js';
 
 export const VIEWS = [
-  ['day', 'Day'], ['wwp', 'Weekly plan'], ['trades', 'By trade'], ['lookahead', '6-week lookahead'], ['takt', 'Takt plan'], ['model', '3D zones'], ['tracker', 'Tracker'], ['schedule', 'Schedule import'], ['admin', 'Setup'],
+  ['day', 'Day'], ['wwp', 'Weekly plan'], ['trades', 'By trade'], ['lookahead', '6-week lookahead'], ['takt', 'Takt plan'], ['model', '3D zones'], ['tracker', 'Tracker'], ['report', 'Weekly report'], ['schedule', 'Schedule import'], ['admin', 'Setup'],
 ];
 const validView = (h) => (VIEWS.some(([v]) => v === h) ? h : 'day');
 
