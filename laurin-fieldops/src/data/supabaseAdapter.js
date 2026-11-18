@@ -93,7 +93,7 @@ export async function saveRecord(table, rec) {
   return toCamel(must(await supabase.from(TABLE[table]).upsert(toSnake(r)).select().single()));
 }
 export async function deleteRecord(table, id) { must(await supabase.from(TABLE[table]).delete().eq('id', id)); }
-export async function setRoomTask(room, task, status) { must(await supabase.from('room_tasks').upsert({ project: PROJECT, room, task, status })); }
+export async function setRoomTask(room, task, status) { must(await supabase.from('room_tasks').upsert({ project: PROJECT, room, task, status, updated_at: new Date().toISOString() })); }
 // Several trains are kept as JSON in takt_settings.baseline_note ({ trains: [{ id, name, start, train, wagonIds }] }).
 // train_start / train_order still hold the first train, so older readers keep working.
 function trainsFromNote(note) { try { const j = JSON.parse(note || ''); return Array.isArray(j?.trains) && j.trains.length ? j.trains : null; } catch { return null; } }
