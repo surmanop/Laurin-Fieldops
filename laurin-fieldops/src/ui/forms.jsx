@@ -49,7 +49,7 @@ export function TradeSelect({ value, onChange }) {
 
 export function ActualForm({ zoneKey, onClose }) {
   const { data, derived, day, user, api, write, foreman, myTrades, owns } = useApp();
-  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: foreman && myTrades.length === 1 ? myTrades[0] : '', crew: '', days: '', pct: '', notes: '', push: true, pushDays: 1, reason: '' });
+  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: foreman && myTrades.length === 1 ? myTrades[0] : '', crew: '', days: '', pct: '', notes: '', push: true, pushDays: 1, reason: '', succ: '' });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   // Every task in the zone, not just today's: scheduled this day first, then the rest by start date.
   const inZone = useMemo(() => itemsForKey(derived.items, f.zone).filter(owns), [derived, f.zone]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -64,6 +64,19 @@ export function ActualForm({ zoneKey, onClose }) {
   const canPush = !foreman && !!sel && f.status === 'Not worked' && !(sel.category === 'site' && sel.milestone);
   const pushN = canPush && f.push ? Math.max(0, Math.round(+f.pushDays || 0)) : 0;
   const preview = usePushPreview(canPush ? sel : null, pushN);
+  // Hand-over (Owner/Super): on a Completed task, name the next task so it shows Ready. The schedule doesn't move.
+  const canHand = !foreman && !!sel && f.status === 'Completed';
+  const succ = useMemo(() => {
+    if (!canHand) return { linked: [], other: [] };
+    const key = (a) => String(pushTarget(a));
+    const linked = sel.category === 'takt'
+      ? derived.items.filter((a) => a.category === 'takt' && a.zones[0] === sel.zones[0] && a.start > sel.start).sort((x, y) => (x.start < y.start ? -1 : 1)).slice(0, 1)
+      : derived.items.filter((a) => (a.preds || []).some(([u]) => u === sel.uid));
+    const skip = new Set([key(sel), ...linked.map(key)]);
+    const other = itemsForKey(derived.items, f.zone).filter((a) => !skip.has(key(a)) && a.finish >= day).sort((x, y) => (x.start < y.start ? -1 : x.start > y.start ? 1 : x.name.localeCompare(y.name)));
+    return { linked, other };
+  }, [canHand, sel, derived, f.zone, day]); // eslint-disable-line react-hooks/exhaustive-deps
+  const succSel = canHand && f.succ ? [...succ.linked, ...succ.other].find((a) => String(pushTarget(a)) === f.succ) : null;
   const save = async () => {
     if (!f.zone) return setMsg('Pick a zone or area.');
     if (pushN && !f.reason) return setMsg('Pick a reason for pushing the schedule.');
@@ -71,9 +84,10 @@ export function ActualForm({ zoneKey, onClose }) {
     if (!sel && !f.notes.trim()) return setMsg('Describe unscheduled work in the notes.');
     if (foreman && !sel && !myTrades.includes(f.trade)) return setMsg('Pick your trade for unscheduled work.');
     const ok = await write(async () => {
-      await api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() });
+      const hand = succSel ? (succSel.category === 'takt' ? { successorTakt: String(pushTarget(succSel)) } : { successorUid: succSel.uid }) : {};
+      await api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), ...hand, status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() });
       if (pushN) await api.saveRecord('adjustments', { target: pushTarget(sel), name: sel.name, path: sel.path, days: pushN, reason: f.reason, note: f.notes.trim(), fromStart: sel.start, delayFrom: day, by: user.id, at: new Date().toISOString() });
-    }, pushN ? `Actual logged · ${sel.name} pushed ${pushN} working day${pushN === 1 ? '' : 's'}` : 'Actual logged');
+    }, pushN ? `Actual logged · ${sel.name} pushed ${pushN} working day${pushN === 1 ? '' : 's'}` : succSel ? `Actual logged · ${succSel.name} marked ready` : 'Actual logged');
     if (ok) onClose();
   };
   return (
@@ -90,6 +104,15 @@ export function ActualForm({ zoneKey, onClose }) {
         <Field label="Crew size"><input type="number" min="0" max="500" value={f.crew} onChange={(e) => set('crew')(e.target.value)} /></Field>
         <Field label="Duration (days the task took)"><input type="number" min="0" max="999" step="0.5" value={f.days} onChange={(e) => set('days')(e.target.value)} placeholder="optional" /></Field>
         <Field label="Field % complete"><input type="number" min="0" max="100" value={f.pct} onChange={(e) => set('pct')(e.target.value)} /></Field>
+        {canHand && (
+          <Field label="Successor (marked ready to start)" wide>
+            <select value={f.succ} onChange={(e) => set('succ')(e.target.value)}>
+              <option value="">None</option>
+              {succ.linked.length > 0 && <optgroup label={sel.category === 'takt' ? 'Next wagon in this zone' : 'Linked in the schedule'}>{succ.linked.map((a) => <option key={String(pushTarget(a))} value={String(pushTarget(a))}>{label(a)}{a.zones?.length ? ` · ${a.zones.join(', ')}` : ''} · {fmt(a.start)} – {fmt(a.finish, 'shortY')}</option>)}</optgroup>}
+              {succ.other.length > 0 && <optgroup label="Other tasks in this zone">{succ.other.map((a) => <option key={String(pushTarget(a))} value={String(pushTarget(a))}>{label(a)} · {fmt(a.start)} – {fmt(a.finish, 'shortY')}</option>)}</optgroup>}
+            </select>
+          </Field>
+        )}
         <Field label="Notes (what was done, delays, reasons)" wide><textarea value={f.notes} maxLength={1000} onChange={(e) => set('notes')(e.target.value)} /></Field>
         {canPush && (
           <div className="wide push-box">
