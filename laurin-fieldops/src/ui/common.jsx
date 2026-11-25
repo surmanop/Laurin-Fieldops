@@ -2,6 +2,7 @@ import React from 'react';
 import { useApp } from '../store.jsx';
 import { addDays, fmt, localToday, mondayOf, stepWorking } from '../logic/dates.js';
 import { isFor } from '../logic/schedule.js';
+import { readyFor } from './adjust.jsx';
 import plan1 from '../assets/plan-l1.jpg';
 import plan2 from '../assets/plan-l2.jpg';
 
@@ -56,7 +57,7 @@ export function zoneState(items, actuals) {
 
 // Week-by-day or 6-week grid. cols: [{key,label,off}], cell(row, col) -> items for that cell.
 export function Matrix({ groups, cols, cell, entriesFor, note }) {
-  const { can, setAdjust } = useApp();
+  const { can, setAdjust, data } = useApp();
   return (
     <div className="mx-wrap">
       <table className="mx">
@@ -72,7 +73,7 @@ export function Matrix({ groups, cols, cell, entriesFor, note }) {
                     <td key={c.key} className={c.off ? 'off' : ''}>
                       {!c.off && cell(r, c).map(({ a, start, tag }) => (
                         <span key={a.uid} className={'chip' + (start ? ' start' : '') + (a.critical ? ' crit' : '') + (can('plan') ? ' click' : '')} style={a.category === 'takt' ? { borderLeftColor: a.color } : undefined} title={a.name + ' · ' + fmt(a.start) + ' – ' + fmt(a.finish, 'shortY') + (can('plan') ? ' · click to mark not happening' : '')} onClick={can('plan') ? () => setAdjust(a) : undefined}>
-                          {a.name}{a.category === 'takt' && a.slip > 0 && <small className="bad"> +{a.slip}d</small>}{a.shift > 0 && <small className="bad"> pushed +{a.shift}d</small>}{note && note(a, c)}
+                          {a.name}{a.category === 'takt' && a.slip > 0 && <small className="bad"> +{a.slip}d</small>}{a.shift > 0 && <small className="bad"> pushed +{a.shift}d</small>}{readyFor(data, a) && <small className="ok"> ready</small>}{note && note(a, c)}
                           {tag}
                           {entriesFor && entriesFor(a, c).map((e) => <span key={e.id} className="st-mini" title={e.status}>{e.status}</span>)}
                         </span>
