@@ -29,7 +29,9 @@ export const specialtyName = (t) => ((t || '').startsWith(SPECIALTY + ': ') ? t.
 export const specialtyTrade = (name) => (name.trim() ? `${SPECIALTY}: ${name.replace(/^\s+/, '')}` : SPECIALTY); // trimmed again when saved
 
 export function TradeSelect({ value, onChange }) {
-  const { data } = useApp();
+  const { data, foreman, myTrades } = useApp();
+  // Trade foremen log only under their own trade(s).
+  if (foreman) return <select value={myTrades.includes(value) ? value : ''} onChange={(e) => onChange(e.target.value)}><option value="">Choose…</option>{myTrades.map((t) => <option key={t}>{t}</option>)}</select>;
   const spec = isSpecialty(value) && data.trades.includes(SPECIALTY);
   const known = !value || spec || data.trades.includes(value);
   const [other, setOther] = useState(!known);
@@ -46,11 +48,11 @@ export function TradeSelect({ value, onChange }) {
 }
 
 export function ActualForm({ zoneKey, onClose }) {
-  const { data, derived, day, user, api, write } = useApp();
-  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: '', crew: '', days: '', pct: '', notes: '', push: true, pushDays: 1, reason: '' });
+  const { data, derived, day, user, api, write, foreman, myTrades, owns } = useApp();
+  const [f, setF] = useState({ zone: zoneKey || '', item: '', status: 'Worked as planned', trade: foreman && myTrades.length === 1 ? myTrades[0] : '', crew: '', days: '', pct: '', notes: '', push: true, pushDays: 1, reason: '' });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   // Every task in the zone, not just today's: scheduled this day first, then the rest by start date.
-  const inZone = useMemo(() => itemsForKey(derived.items, f.zone), [derived, f.zone]);
+  const inZone = useMemo(() => itemsForKey(derived.items, f.zone).filter(owns), [derived, f.zone]); // eslint-disable-line react-hooks/exhaustive-deps
   const onDay = inZone.filter((a) => a.start <= day && a.finish >= day && !inGap(a, day));
   const others = inZone.filter((a) => !onDay.includes(a)).sort((x, y) => (x.start < y.start ? -1 : x.start > y.start ? 1 : x.name.localeCompare(y.name)));
   const opts = [...onDay, ...others];
@@ -58,7 +60,8 @@ export function ActualForm({ zoneKey, onClose }) {
   const sel = opts.find((a) => String(a.uid) === f.item);
   const [msg, setMsg] = useState('');
   // "Not worked" on a scheduled item = Not happening: push it (and what depends on it) through the schedule.
-  const canPush = !!sel && f.status === 'Not worked' && !(sel.category === 'site' && sel.milestone);
+  // Foremen can't push the schedule; they ask for an extension from the task's Confirmed button instead.
+  const canPush = !foreman && !!sel && f.status === 'Not worked' && !(sel.category === 'site' && sel.milestone);
   const pushN = canPush && f.push ? Math.max(0, Math.round(+f.pushDays || 0)) : 0;
   const preview = usePushPreview(canPush ? sel : null, pushN);
   const save = async () => {
@@ -66,6 +69,7 @@ export function ActualForm({ zoneKey, onClose }) {
     if (pushN && !f.reason) return setMsg('Pick a reason for pushing the schedule.');
     if (canPush && f.push && !pushN) return setMsg('Enter at least 1 working day to push, or untick the push.');
     if (!sel && !f.notes.trim()) return setMsg('Describe unscheduled work in the notes.');
+    if (foreman && !sel && !myTrades.includes(f.trade)) return setMsg('Pick your trade for unscheduled work.');
     const ok = await write(async () => {
       await api.saveRecord('actuals', { day, zone: f.zone, ...link(sel), status: sel ? f.status : 'Unscheduled work', trade: f.trade.trim(), crew: f.crew === '' ? null : +f.crew, durationDays: f.days === '' ? null : +f.days, pct: f.pct === '' ? null : +f.pct, notes: f.notes.trim(), by: user.id, at: new Date().toISOString() });
       if (pushN) await api.saveRecord('adjustments', { target: pushTarget(sel), name: sel.name, path: sel.path, days: pushN, reason: f.reason, note: f.notes.trim(), fromStart: sel.start, delayFrom: day, by: user.id, at: new Date().toISOString() });
@@ -76,7 +80,7 @@ export function ActualForm({ zoneKey, onClose }) {
     <Drawer title={'Log actual work · ' + fmt(day, 'long')} onClose={onClose}>
       <div className="form">
         <Field label="Zone or area"><ZoneSelect value={f.zone} onChange={(v) => setF((x) => ({ ...x, zone: v, item: '' }))} /></Field>
-        <Field label="What was worked"><select value={f.item} onChange={(e) => { const a = opts.find((x) => String(x.uid) === e.target.value); setF((x) => ({ ...x, item: e.target.value, trade: x.trade || (a && data.trades.includes(a.trade) ? a.trade : x.trade) })); }}>
+        <Field label="What was worked"><select value={f.item} onChange={(e) => { const a = opts.find((x) => String(x.uid) === e.target.value); setF((x) => ({ ...x, item: e.target.value, trade: x.trade || (a ? (foreman ? a.trade.split(', ').find((t) => myTrades.includes(t)) || x.trade : data.trades.includes(a.trade) ? a.trade : x.trade) : x.trade) })); }}>
           <option value="">Unscheduled / other (describe in notes)</option>
           {onDay.length > 0 && <optgroup label={`Scheduled ${fmt(day, 'wk')}`}>{onDay.map((a) => <option key={a.uid} value={a.uid}>{label(a)}</option>)}</optgroup>}
           {others.length > 0 && <optgroup label="Other tasks in this zone">{others.map((a) => <option key={a.uid} value={a.uid}>{label(a)} · {fmt(a.start)} – {fmt(a.finish, 'shortY')}</option>)}</optgroup>}
@@ -135,15 +139,16 @@ export function CommitmentForm({ onClose }) {
 }
 
 export function ConstraintForm({ onClose }) {
-  const { derived, week, user, api, write, data } = useApp();
+  const { derived, week, user, api, write, data, foreman, myTrades, owns } = useApp();
   const window6 = Array.from({ length: 42 }, (_, i) => addDays(week, i));
-  const [f, setF] = useState({ zone: '', item: '', type: CTYPES[0], trade: '', who: '', need: '', what: '' });
+  const [f, setF] = useState({ zone: '', item: '', type: CTYPES[0], trade: foreman && myTrades.length === 1 ? myTrades[0] : '', who: '', need: '', what: '' });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
-  const opts = itemsForKey(derived.items.filter((a) => overlaps(a, window6)), f.zone);
+  const opts = itemsForKey(derived.items.filter((a) => overlaps(a, window6) && owns(a)), f.zone);
   const sel = opts.find((a) => String(a.uid) === f.item);
   const [msg, setMsg] = useState('');
   const save = async () => {
     if (!f.zone || !f.what.trim() || !f.need) return setMsg('Pick a zone, describe the constraint and set a need-by date.');
+    if (foreman && !sel && !myTrades.includes(f.trade)) return setMsg('Pick your trade, or the task the constraint holds up.');
     const ok = await write(() => api.saveRecord('constraints', { zone: f.zone, ...link(sel), activityStart: sel ? sel.start : '', type: f.type, trade: f.trade.trim(), what: f.what.trim(), responsible: f.who.trim(), needBy: f.need, status: 'Open', clearedOn: '', by: user.id, at: new Date().toISOString() }), 'Constraint added');
     if (ok) onClose();
   };
