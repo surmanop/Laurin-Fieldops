@@ -30,7 +30,7 @@ export default function Schedule() {
     await api.replaceActivities(pending.rows, { name: pending.name, statusDate: pending.statusDate, loaded: localToday(), count: pending.rows.length }, clearAdj);
     if (useRes && pending.trades.length) await api.saveTrades(pending.trades);
   }, useRes && pending.trades.length ? 'Schedule and trade list updated' : 'Schedule updated').then((ok) => ok && setPending(null));
-  const adj = derived.adjustments; const ms = keyMilestones(derived.FC.rows); const pushed = derived.FC.rows.filter((r) => r.shift > 0).sort((a, b) => b.shift - a.shift);
+  const adj = derived.adjustments; const ms = keyMilestones(derived.FC.rows); const pushed = derived.FC.rows.filter((r) => r.shift > 0 || r.ext > 0).sort((a, b) => b.shift + b.ext - a.shift - a.ext);
   const cats = (rows) => ['zone', 'areawide', 'unplaced', 'site'].map((c) => rows.filter((a) => a.category === c).length);
   const [z, aw, un, si] = cats(data.activities);
 
@@ -79,7 +79,7 @@ export default function Schedule() {
         ) : <p className="empty">No changes yet. Owners can mark any scheduled item “Not happening” from Day, Weekly plan, 6-week lookahead, Takt plan or 3D zones.</p>}
         {pushed.length > 0 && <details className="bucket"><summary>All {pushed.length} pushed activities</summary>
           <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Activity</th><th>Baseline</th><th>Forecast</th><th>Push</th></tr></thead>
-            <tbody>{pushed.map((r) => <tr key={r.uid}><td>{r.name}<small className="sub">{r.path}</small></td><td>{fmt(r.baseStart)} – {fmt(r.baseFinish, 'shortY')}</td><td>{fmt(r.start)} – {fmt(r.finish, 'shortY')}</td><td>+{r.shift}</td></tr>)}</tbody></table></div></details>}
+            <tbody>{pushed.map((r) => <tr key={r.uid}><td>{r.name}<small className="sub">{r.path}</small></td><td>{fmt(r.baseStart)} – {fmt(r.baseFinish, 'shortY')}</td><td>{fmt(r.start)} – {fmt(r.finish, 'shortY')}</td><td>+{r.shift}{r.ext > 0 ? ` (finish +${r.shift + r.ext})` : ''}</td></tr>)}</tbody></table></div></details>}
       </div>
       <Unplaced />
       <div className="card">
