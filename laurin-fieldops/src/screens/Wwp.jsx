@@ -8,7 +8,7 @@ import { addDays, fmt, localToday, shutdownOn, weekDays } from '../logic/dates.j
 import { downloadXlsx, matrixRows, printReport } from '../logic/exportFile.js';
 
 export default function Wwp() {
-  const { data, derived, week, can, api, write, user } = useApp();
+  const { data, derived, week, can, api, write, user, foreman, owns, ownsTrade } = useApp();
   const [adding, setAdding] = useState(false);
   const cols = weekDays(week).map((d) => { const s = shutdownOn(d, data.calendar); return { key: d, label: fmt(d, 'wk') + (s ? ' · ' + s.name : ''), off: !!s }; });
   const days = cols.filter((c) => !c.off).map((c) => c.key);
@@ -39,7 +39,10 @@ export default function Wwp() {
       sheets: [{ name: 'Commitments', rows: com }, { name: 'PPC', rows: pr, heads: ph, widths: [36, 24] }, { name: 'Work plan', note: '\u25b6 = starts that day', ...m }],
     };
   };
-  const upd = (c, patch) => write(() => api.saveRecord('commitments', { ...c, ...patch, updatedBy: user.id, updatedAt: new Date().toISOString() }), 'Commitment updated');
+  // A plain update, so trade foremen (who may close but not create commitments) can use it too.
+  const upd = (c, patch) => write(() => api.updateRecord('commitments', c.id, { ...patch, updatedBy: user.id, updatedAt: new Date().toISOString() }), 'Commitment updated');
+  // Foremen close commitments of their own trade, or tied to one of their tasks.
+  const mayClose = (c) => ownsTrade(c.trade) || (foreman && derived.items.some((a) => isFor(c, a) && owns(a)));
 
   return (
     <section className="screen">
@@ -52,7 +55,7 @@ export default function Wwp() {
         <Kpi v={days.length} l="Working days" tone="mute" />
       </div>
       <div className="card">
-        <div className="card-h"><h2>Commitments &amp; PPC</h2>{can('log') && <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add commitment</button>}</div>
+        <div className="card-h"><h2>Commitments &amp; PPC</h2>{can('log') && !foreman && <button type="button" className="btn primary" onClick={() => setAdding(true)}>Add commitment</button>}</div>
         <p className="note">What each trade commits to finish this week. Close each one out Friday. PPC = completed ÷ committed.</p>
         <div className="ppc">
           <div><h4>PPC, last 8 weeks</h4><div className="trend">{trend.map((t) => <div key={t.w} className={t.w === week ? 'cur' : ''} title={'Week of ' + fmt(t.w, 'shortY')}><span>{t.pct == null ? '—' : t.pct + '%'}</span><i style={{ height: t.pct == null ? 0 : Math.max(2, t.pct * 0.7) + 'px' }} /><span>{fmt(t.w)}</span></div>)}</div></div>
@@ -63,9 +66,9 @@ export default function Wwp() {
           <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Zone</th><th>Commitment</th><th>Trade</th><th>By</th><th>Due</th><th>Status</th><th>Reason if missed</th><th /></tr></thead>
             <tbody>{cm.map((c) => (
               <tr key={c.id}><td>{zoneLabel(c.zone)}</td><td>{c.what}{c.activityName && c.activityName !== c.what && <small className="sub">Schedule: {c.activityName}</small>}</td><td>{c.trade}</td><td>{c.committedBy}</td><td>{c.due ? fmt(c.due, 'wk') : 'End of week'}</td>
-                <td>{can('log') ? <select value={c.status} onChange={(e) => upd(c, { status: e.target.value, reason: e.target.value === 'Not complete' ? c.reason : '' })}>{['Open', 'Complete', 'Not complete'].map((s) => <option key={s}>{s}</option>)}</select> : c.status}</td>
-                <td>{c.status === 'Not complete' && (can('log') ? <select value={c.reason} onChange={(e) => upd(c, { reason: e.target.value })}><option value="">Pick a reason…</option>{REASONS.map((r) => <option key={r}>{r}</option>)}</select> : c.reason)}</td>
-                <td>{can('log') && (c.by === user.id || user.role === 'Owner') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('commitments', c.id), 'Commitment deleted')}>Delete</button>}</td></tr>))}</tbody></table></div>
+                <td>{mayClose(c) ? <select value={c.status} onChange={(e) => upd(c, { status: e.target.value, reason: e.target.value === 'Not complete' ? c.reason : '' })}>{['Open', 'Complete', 'Not complete'].map((s) => <option key={s}>{s}</option>)}</select> : c.status}</td>
+                <td>{c.status === 'Not complete' && (mayClose(c) ? <select value={c.reason} onChange={(e) => upd(c, { reason: e.target.value })}><option value="">Pick a reason…</option>{REASONS.map((r) => <option key={r}>{r}</option>)}</select> : c.reason)}</td>
+                <td>{can('log') && !foreman && (c.by === user.id || user.role === 'Owner') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('commitments', c.id), 'Commitment deleted')}>Delete</button>}</td></tr>))}</tbody></table></div>
         ) : <Empty>No commitments for this week yet.</Empty>}
       </div>
       <div className="card">
