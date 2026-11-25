@@ -10,12 +10,13 @@ import Takt from './screens/Takt.jsx';
 import Model from './screens/Model.jsx';
 import Tracker from './screens/Tracker.jsx';
 import Report from './screens/Report.jsx';
+import Extensions from './screens/Extensions.jsx';
 import Schedule from './screens/Schedule.jsx';
 import Admin from './screens/Admin.jsx';
 import Trades from './screens/Trades.jsx';
 import { fmt } from './logic/dates.js';
 
-const SCREENS = { day: Day, wwp: Wwp, trades: Trades, lookahead: Lookahead, takt: Takt, model: Model, tracker: Tracker, report: Report, schedule: Schedule, admin: Admin };
+const SCREENS = { day: Day, wwp: Wwp, trades: Trades, lookahead: Lookahead, takt: Takt, model: Model, tracker: Tracker, report: Report, ext: Extensions, schedule: Schedule, admin: Admin };
 
 // Email sign-in: Supabase sends a one-time link; opening it signs the person in and returns them here.
 function EmailSignIn() {
@@ -97,7 +98,7 @@ function SignIn() {
             <button type="button" className="btn ms" disabled title="Live app only">Sign in with Microsoft</button>
             <p className="demo-note">Demo: Microsoft sign-in is replaced by a role picker. Choose who to sign in as.</p>
             <div className="who">{(data?.users || []).map((u) => (
-              <button type="button" key={u.id} className="btn who-b" onClick={() => signIn(u.id)}><b>{u.name}</b><span>{u.role === 'Owner' ? 'Owner: plans, schedule, setup, everything' : u.role === 'Super' ? 'Super: logs actuals, commitments, constraints, tracker' : 'Viewer: read only'}</span></button>
+              <button type="button" key={u.id} className="btn who-b" onClick={() => signIn(u.id)}><b>{u.name}</b><span>{u.role === 'Owner' ? 'Owner: plans, schedule, setup, everything' : u.role === 'Super' ? 'Super: logs actuals, commitments, constraints, tracker' : u.role === 'Foreman' ? `Foreman: own trade only (${(u.trades || []).join(', ')})` : 'Viewer: read only'}</span></button>
             ))}</div>
           </>
         )}
@@ -136,10 +137,13 @@ function SetPassword({ onClose, required, forced }) {
 }
 
 function Shell() {
-  const { data, user, view, go, signOut, toast, api, adjust, place, derived, auth, account, setSigningIn } = useApp();
+  const { data, user, view, go, signOut, toast, api, adjust, place, derived, auth, account, setSigningIn, can, foreman } = useApp();
   const visitor = user.role === 'Visitor';
-  const views = visitor ? VIEWS.filter(([v]) => v !== 'admin') : VIEWS; // Setup (people and roles) is for the team only
-  const Screen = SCREENS[visitor && view === 'admin' ? 'day' : view];
+  // Setup (people and roles) is for the team only; Extensions is for those who approve them and the foremen who ask.
+  const hidden = (v) => (v === 'admin' && visitor) || (v === 'ext' && !can('approve') && !foreman);
+  const views = VIEWS.filter(([v]) => !hidden(v));
+  const Screen = SCREENS[hidden(view) ? 'day' : view];
+  const pending = can('approve') ? (data.extRequests || []).filter((x) => x.status === 'Pending').length : 0;
   const [pwOpen, setPwOpen] = React.useState(null); // null: decide from account; true/false: person chose
   const live = auth.authMode === 'microsoft';
   const askPw = live && !!user.id && (pwOpen ?? !account.hasPassword);
@@ -152,7 +156,7 @@ function Shell() {
           {visitor && !user.signedIn ? <><span className="user">Viewing</span><button type="button" className="btn small primary" onClick={() => setSigningIn(true)}>Sign in to edit</button></>
             : <><span className="user">{user.name} · {visitor ? 'View only' : user.role}</span>{live && user.id && <button type="button" className="link" onClick={() => setPwOpen(true)}>Password</button>}<button type="button" className="link" onClick={signOut}>Sign out</button></>}</div>
       </header>
-      <nav className="nav" aria-label="Screens">{views.map(([v, l]) => <button type="button" key={v} className={view === v ? 'on' : ''} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}>{l}</button>)}</nav>
+      <nav className="nav" aria-label="Screens">{views.map(([v, l]) => <button type="button" key={v} className={view === v ? 'on' : ''} aria-current={view === v ? 'page' : undefined} onClick={() => go(v)}>{l}{v === 'ext' && pending > 0 && <span className="nav-n" aria-label={`${pending} waiting`}>{pending}</span>}</button>)}</nav>
       <main className="main">
         {visitor && user.signedIn && <div className="banner" style={{ margin: '12px 0' }}>You're signed in as {user.name}, but you haven't been added to this project yet, so you can view only. Ask the project owner to add your email on Setup › People and roles, then reload.</div>}
         {askPw && <SetPassword required={!account.hasPassword} onClose={() => setPwOpen(false)} />}
