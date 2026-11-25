@@ -18,23 +18,28 @@ export function makeWorkdays(calendar, from, to) {
   return { idx, at, list };
 }
 
+// Two kinds of change: a push (reason as picked) moves the activity's start and finish;
+// an extension ("Confirmed" -> Extend, reason starts with EXT) moves only its finish.
+// Both carry through the logic links: SS successors follow the start, FS/FF successors follow the finish.
+export const EXT = 'Extended: ';
+export const isExtension = (x) => (x.reason || '').startsWith(EXT);
 export function forecastSchedule(activities, adjustments, calendar) {
   if (!activities.length) return { rows: activities, moved: 0 };
   let lo = activities[0].start, hi = activities[0].finish;
   activities.forEach((a) => { if (a.start < lo) lo = a.start; if (a.finish > hi) hi = a.finish; });
   const W = makeWorkdays(calendar, addDays(lo, -30), addDays(hi, 900));
-  const own = new Map();
-  adjustments.filter((x) => typeof x.target === 'number').forEach((x) => own.set(x.target, (own.get(x.target) || 0) + (+x.days || 0)));
+  const own = new Map(), ext = new Map();
+  adjustments.filter((x) => typeof x.target === 'number').forEach((x) => { const m = isExtension(x) ? ext : own; m.set(x.target, (m.get(x.target) || 0) + (+x.days || 0)); });
   const byUid = new Map(activities.map((a) => [a.uid, a]));
   const shift = new Map(); const visiting = new Set();
-  const get = (a) => {
+  const get = (a) => { // [start shift, finish shift] in working days
     if (shift.has(a.uid)) return shift.get(a.uid);
-    if (visiting.has(a.uid)) return 0; // a loop in the links: ignore rather than hang
+    if (visiting.has(a.uid)) return [0, 0]; // a loop in the links: ignore rather than hang
     visiting.add(a.uid);
     let push = 0;
     (a.preds || []).forEach(([pu, type, lag]) => {
       const p = byUid.get(pu); if (!p) return;
-      const sp = get(p); if (sp <= 0) return;
+      const [ps, pf] = get(p); const sp = type === 'SS' ? ps : pf; if (sp <= 0) return;
       let slack;
       if (type === 'SS') slack = W.idx(a.start) - (W.idx(p.start) + lag);
       else if (type === 'FF') slack = W.idx(a.finish) - (W.idx(p.finish) + lag);
@@ -43,15 +48,16 @@ export function forecastSchedule(activities, adjustments, calendar) {
     });
     visiting.delete(a.uid);
     const s = Math.max(0, push) + (own.get(a.uid) || 0);
-    shift.set(a.uid, s);
-    return s;
+    const r = [s, s + (ext.get(a.uid) || 0)];
+    shift.set(a.uid, r);
+    return r;
   };
   let moved = 0;
   const rows = activities.map((a) => {
-    const s = get(a);
-    if (!s) return { ...a, baseStart: a.start, baseFinish: a.finish, shift: 0 };
+    const [s, f] = get(a);
+    if (!s && !f) return { ...a, baseStart: a.start, baseFinish: a.finish, shift: 0, ext: 0 };
     moved++;
-    return { ...a, baseStart: a.start, baseFinish: a.finish, shift: s, start: W.at(W.idx(a.start) + s), finish: W.at(W.idx(a.finish) + s) };
+    return { ...a, baseStart: a.start, baseFinish: a.finish, shift: s, ext: f - s, start: W.at(W.idx(a.start) + s), finish: W.at(W.idx(a.finish) + f) };
   });
   return { rows, moved };
 }
@@ -76,7 +82,7 @@ export function applyDelays(items, adjustments, calendar) {
     const delays = [...list].sort((p, q) => ((p.delayFrom || p.at || '') < (q.delayFrom || q.at || '') ? -1 : 1));
     let start = a.start; const gaps = [];
     delays.forEach((d) => {
-      if (!d.delayFrom || !(d.fromStart && d.fromStart <= d.delayFrom)) return; // not under way yet: a plain shift
+      if (isExtension(d) || !d.delayFrom || !(d.fromStart && d.fromStart <= d.delayFrom)) return; // not under way yet: a plain shift
       if (start > d.fromStart) start = d.fromStart; // keep the start it had when it was pushed
       gaps.push({ from: W.at(W.idx(d.delayFrom)), to: W.at(W.idx(d.delayFrom) + d.days - 1), days: d.days });
     });
