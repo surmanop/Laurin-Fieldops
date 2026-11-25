@@ -69,7 +69,7 @@ export function PlaceForm() {
 }
 
 export function PlaceButton({ a }) {
-  const { can, setPlace } = useApp();
-  if (!can('log') || (a.category !== 'unplaced' && !a.placed)) return null;
+  const { can, setPlace, foreman } = useApp();
+  if (!can('log') || foreman || (a.category !== 'unplaced' && !a.placed)) return null;
   return <button type="button" className="btn small" onClick={(e) => { e.stopPropagation(); setPlace(a); }}>{a.placed ? 'Change zones' : 'Place in zones'}</button>;
 }
