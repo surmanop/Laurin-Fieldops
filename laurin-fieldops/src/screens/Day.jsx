@@ -3,6 +3,7 @@ import { useApp } from '../store.jsx';
 import { DateBar, PlanView, zoneState } from '../ui/common.jsx';
 import { Empty, Item, Kpi, Status } from '../ui/parts.jsx';
 import { ActualForm, zoneLabel } from '../ui/forms.jsx';
+import { readyFor } from '../ui/adjust.jsx';
 import { Manpower } from '../ui/manpower.jsx';
 import { activeOn, inGap, isFor, isZoneCat, onZone } from '../logic/schedule.js';
 import { addDays, fmt, offReason, stepWorking } from '../logic/dates.js';
@@ -70,7 +71,7 @@ export default function Day() {
                     <article key={z.code} id={'z-' + z.code.replace(/\W/g, '')} className={'zone' + (own.length || aw.length || ze.length ? ' busy' : '') + (zone === z.code ? ' sel' : '')} onClick={() => setZone(z.code)}>
                       <header><b>{z.code}</b><span>{z.rooms}</span>{z.trainPos != null && <em>#{z.trainPos}</em>}</header>
                       {own.length > 0 && <ul className="items">{own.map((a) => <Item key={a.uid} a={a} entries={ze.filter((e) => isFor(e, a))} />)}</ul>}
-                      {aw.length > 0 && <p className="aw"><b>{aw[0].area}-wide:</b> {aw.map((a) => a.name).join(' · ')}</p>}
+                      {aw.length > 0 && <p className="aw"><b>{aw[0].area}-wide:</b> {aw.map((a, i) => <React.Fragment key={a.uid}>{i > 0 && ' · '}{a.name}{readyFor(data, a) && <small className="ok"> ready</small>}</React.Fragment>)}</p>}
                       {ze.some((e) => aw.some((a) => isFor(e, a))) && <div className="unsched"><b>Logged on Area-wide work:</b>{ze.filter((e) => aw.some((a) => isFor(e, a))).map((e) => <div key={'aw' + e.id}><Status s={e.status} /> {[e.activityName, e.trade, e.crew != null && e.crew !== '' ? e.crew + ' crew' : '', e.notes, span(e)].filter(Boolean).join(' · ')}</div>)}</div>}
                       {aw.filter((a) => (a.delays || []).length).map((a) => <div key={'d' + a.uid} className="delay-note">{a.delays.map((d) => <div key={d.id || d.at}><b>Delay</b> {a.name}: +{d.days} working day{d.days === 1 ? '' : 's'}{d.delayFrom ? ` from ${fmt(d.delayFrom, 'wk')}` : ''} · {d.reason}{d.note ? ` \u2014 ${d.note}` : ''}</div>)}</div>)}
                       {pz.length > 0 && <div className="delay-note">{pz.map((a) => { const g = a.gaps.find((x) => day >= x.from && day <= x.to); return <div key={'p' + a.uid}><b>Pushed</b> {a.name}: back on {fmt(stepWorking(g.to, 1, data.calendar), 'wk')}{ze.filter((e) => isFor(e, a)).map((e) => ` \u00b7 ${e.status}${e.notes ? ' \u2014 ' + e.notes : ''}`).join('')}</div>; })}</div>}
