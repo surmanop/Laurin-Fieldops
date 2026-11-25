@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../store.jsx';
 import { Drawer, Field } from './parts.jsx';
-import { REASONS } from '../logic/schedule.js';
-import { forecastSchedule, keyMilestones, makeWorkdays } from '../logic/forecast.js';
+import { REASONS, STATUSES } from '../logic/schedule.js';
+import { EXT, forecastSchedule, keyMilestones, makeWorkdays } from '../logic/forecast.js';
 import { computeTakt } from '../logic/takt.js';
 import { addDays, fmt } from '../logic/dates.js';
 
@@ -59,34 +59,101 @@ export function NotHappening({ a }) {
 
 // Shared with "Log actual" (status Not worked): what a push would do, before it's saved.
 export const pushTarget = (a) => (a.category === 'takt' ? 'tk:' + a.wagon + '|' + a.zones[0] : a.uid);
-export function usePushPreview(a, n) {
+export function usePushPreview(a, n, ext = false) {
   const { data, derived, today } = useApp();
   const target = a ? pushTarget(a) : null;
   return useMemo(() => {
     if (!a || !n) return null;
-    const adj = [...derived.adjustments, { target, days: n }];
+    const adj = [...derived.adjustments, { target, days: n, reason: ext ? EXT : '' }];
     const FC = forecastSchedule(data.activities, adj, data.calendar);
     const before = new Map(derived.FC.rows.map((r) => [r.uid, r]));
-    const movedNow = FC.rows.filter((r) => r.shift !== (before.get(r.uid)?.shift || 0));
+    const movedNow = FC.rows.filter((r) => r.finish !== before.get(r.uid)?.finish || r.start !== before.get(r.uid)?.start).map((r) => ({ ...r, by: Math.max(r.shift + r.ext - (before.get(r.uid)?.shift || 0) - (before.get(r.uid)?.ext || 0), r.shift - (before.get(r.uid)?.shift || 0)) }));
     const ms = keyMilestones(FC.rows).map((m) => ({ name: m.name, was: before.get(m.uid)?.finish, now: m.finish }));
     let takt = null;
     if (a.category === 'takt') {
       const TP = computeTakt({ takt: data.takt, activities: FC.rows, calendar: data.calendar, actuals: data.actuals, commitments: data.commitments, constraints: data.constraints, adjustments: adj, today });
       takt = { was: derived.TP.forecastEnd, now: TP.forecastEnd, cells: TP.cells.filter((c) => c.ff !== derived.TP.cells.find((x) => x.key === c.key)?.ff).length };
     }
-    return { moved: movedNow.length, top: movedNow.sort((x, y) => y.shift - x.shift).slice(0, 6), ms, takt };
-  }, [n, target, derived]); // eslint-disable-line
+    return { moved: movedNow.length, top: movedNow.sort((x, y) => y.by - x.by).slice(0, 6), ms, takt };
+  }, [n, target, derived, ext]); // eslint-disable-line
 }
-export function PushImpact({ a, n, preview }) {
+export function PushImpact({ a, n, preview, ext }) {
   return (
     preview ? (
         <div className="impact">
           <h3>What this does</h3>
-          <p><b>{a.name}</b> moves {n} working day{n === 1 ? '' : 's'}. {preview.moved > 1 ? `${preview.moved - 1} other activit${preview.moved === 2 ? 'y moves' : 'ies move'} with it through the schedule logic.` : a.category === 'takt' ? '' : 'Nothing else moves: its successors have enough slack.'}</p>
+          <p><b>{a.name}</b> {ext ? 'finishes' : 'moves'} {n} working day{n === 1 ? '' : 's'}{ext ? ' later' : ''}. {preview.moved > 1 ? `${preview.moved - 1} other activit${preview.moved === 2 ? 'y moves' : 'ies move'} with it through the schedule logic.` : a.category === 'takt' ? '' : 'Nothing else moves: its successors have enough slack.'}</p>
           {preview.takt && <p>Takt: {preview.takt.cells} wagon-zones move; train finish {fmt(preview.takt.was, 'shortY')} → <b>{fmt(preview.takt.now, 'shortY')}</b>.</p>}
           {preview.ms.map((m) => <p key={m.name}>{m.name}: {m.now === m.was ? `no change (${fmt(m.now, 'shortY')})` : <>{fmt(m.was, 'shortY')} → <b className="bad">{fmt(m.now, 'shortY')}</b></>}</p>)}
-          {preview.top.length > 1 && <ul className="plain">{preview.top.map((r) => <li key={r.uid}>{r.name} <span className="sub-i">({r.path.split(' › ').slice(-1)[0]})</span> +{r.shift}</li>)}</ul>}
+          {preview.top.length > 1 && <ul className="plain">{preview.top.map((r) => <li key={r.uid}>{r.name} <span className="sub-i">({r.path.split(' › ').slice(-1)[0]})</span> +{r.by}</li>)}</ul>}
         </div>
     ) : null
+  );
+}
+
+// "Confirmed": the field confirms the expected completion of a task on today's plan, or extends it.
+// Confirm logs a field entry (Worked as planned). Extend also adds an extension: the finish moves out
+// by working days and everything that follows it moves through the schedule logic, like a push.
+const CONFIRM = 'Confirmed: ';
+export const lastConfirm = (actuals, a) => actuals.filter((e) => (a.category === 'takt' ? e.wagon === a.wagon && e.zone === a.zones[0] : e.activityUid === a.uid) && /^(Confirmed|Extended): /.test(e.notes || '')).sort((x, y) => (x.day + (x.at || '') < y.day + (y.at || '') ? 1 : -1))[0];
+const zoneKeyOf = (a) => (a.category === 'site' ? 'site' : a.category === 'unplaced' ? 'bucket:' + a.bucket : a.zones[0] || 'site');
+
+export function Confirmed({ a }) {
+  const { can } = useApp();
+  const [open, setOpen] = useState(false);
+  if (!can('log') || a.milestone) return null;
+  return (
+    <>
+      <button type="button" className="btn small okb" onClick={(e) => { e.stopPropagation(); setOpen(true); }}>Confirmed</button>
+      {open && <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}><ConfirmForm a={a} onClose={() => setOpen(false)} /></div>}
+    </>
+  );
+}
+
+function ConfirmForm({ a, onClose }) {
+  const { data, user, api, write, day } = useApp();
+  const [mode, setMode] = useState('confirm');
+  const [until, setUntil] = useState(a.finish);
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [msg, setMsg] = useState('');
+  const W = useMemo(() => makeWorkdays(data.calendar, addDays(a.finish, -10), addDays(a.finish, 800)), [a, data]);
+  const n = mode === 'extend' ? Math.max(0, W.idx(until) - W.idx(a.finish)) : 0;
+  const preview = usePushPreview(mode === 'extend' ? a : null, n, true);
+  const newFinish = n ? W.at(W.idx(a.finish) + n) : a.finish;
+  const save = async () => {
+    if (mode === 'extend' && !n) return setMsg('Pick a completion date after ' + fmt(a.finish, 'shortY') + ' (a working day).');
+    if (mode === 'extend' && !reason) return setMsg('Pick a reason for the extension.');
+    const base = { day, zone: zoneKeyOf(a), activityUid: a.category !== 'takt' ? a.uid : null, wagon: a.category === 'takt' ? a.wagon : '', activityName: a.name, trade: a.trade && data.trades.includes(a.trade) ? a.trade : '', by: user.id, at: new Date().toISOString() };
+    const ok = await write(async () => {
+      if (mode === 'confirm') {
+        await api.saveRecord('actuals', { ...base, status: STATUSES[0], notes: `${CONFIRM}expected completion ${fmt(a.finish, 'shortY')}${note.trim() ? ' — ' + note.trim() : ''}` });
+      } else {
+        await api.saveRecord('adjustments', { target: pushTarget(a), name: a.name, path: a.path, days: n, reason: EXT + reason, note: note.trim(), fromStart: a.start, delayFrom: null, by: user.id, at: new Date().toISOString() });
+        // Takt cells already count the extension as lost days; a Partial entry there would count it twice.
+        await api.saveRecord('actuals', { ...base, status: a.category === 'takt' ? STATUSES[0] : 'Partial / behind', notes: `Extended: completion ${fmt(a.finish, 'shortY')} → ${fmt(newFinish, 'shortY')} (+${n} working day${n === 1 ? '' : 's'}) · ${reason}${note.trim() ? ' — ' + note.trim() : ''}` });
+      }
+    }, mode === 'confirm' ? `${a.name}: completion ${fmt(a.finish, 'shortY')} confirmed` : `${a.name}: completion extended to ${fmt(newFinish, 'shortY')}`);
+    if (ok) onClose();
+  };
+  return (
+    <Drawer title="Confirmed: expected completion" onClose={onClose}>
+      <div className="adj-item">
+        <b>{a.name}</b>
+        <span className="sub">{a.category === 'takt' ? `Takt wagon in ${a.zones[0]}` : a.path}</span>
+        <span>Started {fmt(a.start, 'shortY')} · expected completion <b>{fmt(a.finish, 'shortY')}</b>{a.finish !== a.baseFinish && a.baseFinish ? ` (baseline ${fmt(a.baseFinish, 'shortY')})` : ''}</span>
+      </div>
+      <div className="form">
+        <div className="seg wide"><button type="button" className={mode === 'confirm' ? 'on' : ''} onClick={() => setMode('confirm')}>Confirm {fmt(a.finish)}</button><button type="button" className={mode === 'extend' ? 'on' : ''} onClick={() => setMode('extend')}>Extend</button></div>
+        {mode === 'extend' && <>
+          <Field label="New expected completion"><input type="date" value={until} min={a.finish} onChange={(e) => setUntil(e.target.value)} /></Field>
+          <Field label="Reason"><select value={reason} onChange={(e) => setReason(e.target.value)}><option value="">Pick a reason…</option>{REASONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
+        </>}
+        <Field label="Note" wide><textarea value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder={mode === 'extend' ? 'Why it needs more time' : 'Optional'} /></Field>
+      </div>
+      {mode === 'extend' && n > 0 && <p className="note">Completion {fmt(a.finish, 'shortY')} → <b>{fmt(newFinish, 'shortY')}</b>: +{n} working day{n === 1 ? '' : 's'}. The start stays {fmt(a.start, 'shortY')}.</p>}
+      {mode === 'extend' && <PushImpact a={a} n={n} preview={preview} ext />}
+      <div className="form-a"><button type="button" className="btn primary" onClick={save}>{mode === 'confirm' ? 'Confirm completion' : 'Extend and update schedule'}</button><span className="msg bad">{msg}</span></div>
+    </Drawer>
   );
 }
