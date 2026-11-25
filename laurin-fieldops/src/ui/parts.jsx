@@ -47,7 +47,7 @@ export function Item({ a, entries = [], extra }) {
         {a.blocked && <span className="tag bad">Blocked</span>}
         {a.shift > 0 && <span className="tag bad" title={`Baseline ${fmt(a.baseStart)} – ${fmt(a.baseFinish, 'shortY')}`}>Pushed +{a.shift}d</span>}
         {a.ext > 0 && <span className="tag bad" title={`Baseline finish ${fmt(a.baseFinish, 'shortY')}`}>Extended +{a.ext}d</span>}
-        {conf && <span className="tag ok" title={conf.notes}>{conf.notes.startsWith('Extended') ? 'Extended' : 'Confirmed'} {fmt(conf.day)}</span>}
+        {conf && <span className="tag ok" title={conf.notes}>{conf.notes.split(':')[0]} {fmt(conf.day)}</span>}
         {a.placed && <span className="tag placed" title={`Schedule group: ${a.placed.from}`}>Placed by {placer || 'team'}{a.placed.at ? ` \u00b7 ${fmt(a.placed.at.slice(0, 10))}` : ''}</span>}
         <PlaceButton a={a} />
         <Confirmed a={a} />
