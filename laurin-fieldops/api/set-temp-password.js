@@ -4,7 +4,7 @@
 // Needs SUPABASE_SERVICE_ROLE_KEY in Vercel (Settings › Environment Variables). Never sent to the browser.
 import { createClient } from '@supabase/supabase-js';
 
-const ROLES = ['Owner', 'Super', 'Viewer'];
+const ROLES = ['Owner', 'Super', 'Foreman', 'Viewer'];
 const json = (res, code, body) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(body)); };
 const readBody = async (req) => {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -33,7 +33,9 @@ export default async function handler(req, res) {
   const password = String(b.password || '');
   if (password.length < 8 || password.length > 72) return json(res, 400, { error: 'Temporary password must be 8 to 72 characters.' });
   const role = b.role == null ? null : String(b.role);
-  if (role && !ROLES.includes(role)) return json(res, 400, { error: 'Role must be Owner, Super or Viewer.' });
+  if (role && !ROLES.includes(role)) return json(res, 400, { error: 'Role must be Owner, Super, Foreman or Viewer.' });
+  // Foreman trades (014_foreman.sql); only sent when adding a foreman.
+  const trades = Array.isArray(b.trades) ? b.trades.map((t) => String(t).slice(0, 80)).slice(0, 20) : null;
   const name = String(b.name || '').trim().slice(0, 100);
 
   // Find the person: by account id (existing member) or by email.
@@ -69,7 +71,9 @@ export default async function handler(req, res) {
   const { data: cur } = await admin.from('memberships').select('role, display_name').eq('project', project).eq('user_id', user.id).maybeSingle();
   const finalRole = role || cur?.role || inv?.role || 'Viewer';
   const finalName = name || cur?.display_name || inv?.display_name || user.email;
-  const { error: mErr } = await admin.from('memberships').upsert({ project, user_id: user.id, display_name: finalName, role: finalRole });
+  const row = { project, user_id: user.id, display_name: finalName, role: finalRole };
+  if (trades && finalRole === 'Foreman') row.trades = trades;
+  const { error: mErr } = await admin.from('memberships').upsert(row);
   if (mErr) return json(res, 500, { error: mErr.message });
   await admin.from('invites').delete().eq('project', project).eq('email', (user.email || '').toLowerCase());
   return json(res, 200, { ok: true, email: user.email, role: finalRole });
