@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { fmt } from '../logic/dates.js';
 import { STATUSES } from '../logic/schedule.js';
-import { Confirmed, NotHappening, lastConfirm } from './adjust.jsx';
+import { Confirmed, NotHappening, lastConfirm, readyFor } from './adjust.jsx';
 import { EXT, isExtension } from '../logic/forecast.js';
 import { PlaceButton } from './place.jsx';
 import { useApp } from '../store.jsx';
@@ -33,6 +33,7 @@ export const Field = ({ label, children, wide }) => (<label className={'field' +
 export function Item({ a, entries = [], extra }) {
   const { data } = useApp();
   const conf = lastConfirm(data.actuals, a);
+  const ready = readyFor(data, a);
   const placer = a.placed ? data.users.find((u) => u.id === a.placed.by)?.name : '';
   return (
     <li className={'item' + (a.category === 'takt' ? ' takt' : '')} style={a.category === 'takt' ? { borderLeftColor: a.color } : undefined}>
@@ -47,6 +48,7 @@ export function Item({ a, entries = [], extra }) {
         {a.blocked && <span className="tag bad">Blocked</span>}
         {a.shift > 0 && <span className="tag bad" title={`Baseline ${fmt(a.baseStart)} – ${fmt(a.baseFinish, 'shortY')}`}>Pushed +{a.shift}d</span>}
         {a.ext > 0 && <span className="tag bad" title={`Baseline finish ${fmt(a.baseFinish, 'shortY')}`}>Extended +{a.ext}d</span>}
+        {ready && <span className="tag ok" title={`Hand-over logged ${fmt(ready.day, 'shortY')}${ready.notes ? ': ' + ready.notes : ''}`}>Ready · {ready.activityName || 'predecessor'} complete {fmt(ready.day)}</span>}
         {conf && <span className="tag ok" title={conf.notes}>{conf.notes.split(':')[0]} {fmt(conf.day)}</span>}
         {a.placed && <span className="tag placed" title={`Schedule group: ${a.placed.from}`}>Placed by {placer || 'team'}{a.placed.at ? ` \u00b7 ${fmt(a.placed.at.slice(0, 10))}` : ''}</span>}
         <PlaceButton a={a} />
