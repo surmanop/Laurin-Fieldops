@@ -95,15 +95,19 @@ export function PushImpact({ a, n, preview, ext }) {
 // Confirm logs a field entry (Worked as planned). Extend also adds an extension: the finish moves out
 // by working days and everything that follows it moves through the schedule logic, like a push.
 const CONFIRM = 'Confirmed: ';
-export const lastConfirm = (actuals, a) => actuals.filter((e) => (a.category === 'takt' ? e.wagon === a.wagon && e.zone === a.zones[0] : e.activityUid === a.uid) && /^(Confirmed|Extended): /.test(e.notes || '')).sort((x, y) => (x.day + (x.at || '') < y.day + (y.at || '') ? 1 : -1))[0];
+export const lastConfirm = (actuals, a) => actuals.filter((e) => (a.category === 'takt' ? e.wagon === a.wagon && e.zone === a.zones[0] : e.activityUid === a.uid) && /^(Confirmed|Extended|Extension requested): /.test(e.notes || '')).sort((x, y) => (x.day + (x.at || '') < y.day + (y.at || '') ? 1 : -1))[0];
 const zoneKeyOf = (a) => (a.category === 'site' ? 'site' : a.category === 'unplaced' ? 'bucket:' + a.bucket : a.zones[0] || 'site');
 
+export const pendingExt = (data, a) => (data.extRequests || []).find((x) => x.status === 'Pending' && String(x.target) === String(pushTarget(a)));
 export function Confirmed({ a }) {
-  const { can } = useApp();
+  const { data, owns } = useApp();
   const [open, setOpen] = useState(false);
-  if (!can('log') || a.milestone) return null;
+  const pend = pendingExt(data, a);
+  const tag = pend ? <span className="tag warn" title={`Asked for +${pend.days} working day${pend.days === 1 ? '' : 's'} (${pend.reason}); waiting for an owner or super`}>Extension requested +{pend.days}d</span> : null;
+  if (!owns(a) || a.milestone) return tag;
   return (
     <>
+      {tag}
       <button type="button" className="btn small okb" onClick={(e) => { e.stopPropagation(); setOpen(true); }}>Confirmed</button>
       {open && <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}><ConfirmForm a={a} onClose={() => setOpen(false)} /></div>}
     </>
@@ -111,7 +115,7 @@ export function Confirmed({ a }) {
 }
 
 function ConfirmForm({ a, onClose }) {
-  const { data, user, api, write, day } = useApp();
+  const { data, user, api, write, day, foreman } = useApp();
   const [mode, setMode] = useState('confirm');
   const [until, setUntil] = useState(a.finish);
   const [reason, setReason] = useState('');
@@ -124,16 +128,21 @@ function ConfirmForm({ a, onClose }) {
   const save = async () => {
     if (mode === 'extend' && !n) return setMsg('Pick a completion date after ' + fmt(a.finish, 'shortY') + ' (a working day).');
     if (mode === 'extend' && !reason) return setMsg('Pick a reason for the extension.');
+    if (mode === 'extend' && foreman && pendingExt(data, a)) return setMsg('There is already an extension waiting for approval on this task.');
     const base = { day, zone: zoneKeyOf(a), activityUid: a.category !== 'takt' ? a.uid : null, wagon: a.category === 'takt' ? a.wagon : '', activityName: a.name, trade: a.trade && data.trades.includes(a.trade) ? a.trade : '', by: user.id, at: new Date().toISOString() };
     const ok = await write(async () => {
       if (mode === 'confirm') {
         await api.saveRecord('actuals', { ...base, status: STATUSES[0], notes: `${CONFIRM}expected completion ${fmt(a.finish, 'shortY')}${note.trim() ? ' — ' + note.trim() : ''}` });
+      } else if (foreman) {
+        // Foremen ask; the schedule moves only when an Owner or Super approves (Extensions screen).
+        await api.requestExtension({ target: pushTarget(a), name: a.name, path: a.path, trade: a.trade || '', days: n, fromFinish: a.finish, newFinish, reason, note: note.trim(), requestedBy: user.id });
+        await api.saveRecord('actuals', { ...base, status: a.category === 'takt' ? STATUSES[0] : 'Partial / behind', notes: `Extension requested: completion ${fmt(a.finish, 'shortY')} \u2192 ${fmt(newFinish, 'shortY')} (+${n} working day${n === 1 ? '' : 's'}) \u00b7 ${reason}${note.trim() ? ' \u2014 ' + note.trim() : ''}` });
       } else {
         await api.saveRecord('adjustments', { target: pushTarget(a), name: a.name, path: a.path, days: n, reason: EXT + reason, note: note.trim(), fromStart: a.start, delayFrom: null, by: user.id, at: new Date().toISOString() });
         // Takt cells already count the extension as lost days; a Partial entry there would count it twice.
         await api.saveRecord('actuals', { ...base, status: a.category === 'takt' ? STATUSES[0] : 'Partial / behind', notes: `Extended: completion ${fmt(a.finish, 'shortY')} → ${fmt(newFinish, 'shortY')} (+${n} working day${n === 1 ? '' : 's'}) · ${reason}${note.trim() ? ' — ' + note.trim() : ''}` });
       }
-    }, mode === 'confirm' ? `${a.name}: completion ${fmt(a.finish, 'shortY')} confirmed` : `${a.name}: completion extended to ${fmt(newFinish, 'shortY')}`);
+    }, mode === 'confirm' ? `${a.name}: completion ${fmt(a.finish, 'shortY')} confirmed` : foreman ? `${a.name}: extension to ${fmt(newFinish, 'shortY')} sent for approval` : `${a.name}: completion extended to ${fmt(newFinish, 'shortY')}`);
     if (ok) onClose();
   };
   return (
@@ -152,8 +161,9 @@ function ConfirmForm({ a, onClose }) {
         <Field label="Note" wide><textarea value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder={mode === 'extend' ? 'Why it needs more time' : 'Optional'} /></Field>
       </div>
       {mode === 'extend' && n > 0 && <p className="note">Completion {fmt(a.finish, 'shortY')} → <b>{fmt(newFinish, 'shortY')}</b>: +{n} working day{n === 1 ? '' : 's'}. The start stays {fmt(a.start, 'shortY')}.</p>}
+      {mode === 'extend' && foreman && <p className="note">This goes to an owner or super for approval. The schedule moves only once they approve it.</p>}
       {mode === 'extend' && <PushImpact a={a} n={n} preview={preview} ext />}
-      <div className="form-a"><button type="button" className="btn primary" onClick={save}>{mode === 'confirm' ? 'Confirm completion' : 'Extend and update schedule'}</button><span className="msg bad">{msg}</span></div>
+      <div className="form-a"><button type="button" className="btn primary" onClick={save}>{mode === 'confirm' ? 'Confirm completion' : foreman ? 'Send extension for approval' : 'Extend and update schedule'}</button><span className="msg bad">{msg}</span></div>
     </Drawer>
   );
 }
