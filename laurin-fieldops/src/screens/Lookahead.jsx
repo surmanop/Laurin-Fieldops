@@ -8,7 +8,7 @@ import { addDays, fmt, isWorking, localToday, weekDays } from '../logic/dates.js
 import { downloadXlsx, matrixRows, printReport } from '../logic/exportFile.js';
 
 export default function Lookahead() {
-  const { data, derived, week, can, api, write, user } = useApp();
+  const { data, derived, week, can, api, write, user, foreman } = useApp();
   const [startOnly, setStartOnly] = useState(false);
   const [openOnly, setOpenOnly] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -52,7 +52,7 @@ export default function Lookahead() {
             <tbody>{rows.map((c) => (
               <tr key={c.id} className={c.status === 'Cleared' ? 'clr' : c.needBy < today ? 'od' : c.needBy <= soon ? 'soon' : ''}>
                 <td>{fmt(c.needBy, 'shortY')}</td><td>{zoneLabel(c.zone)}</td><td>{c.activityName || '—'}{c.activityStart && <small className="sub">Starts {fmt(c.activityStart, 'shortY')}</small>}</td><td>{c.trade}</td><td>{c.type}</td><td>{c.what}</td><td>{c.responsible}</td><td>{c.status === 'Cleared' ? 'Cleared ' + fmt(c.clearedOn) : 'Open'}</td>
-                <td className="nowrap">{can('log') && <button type="button" className="btn small" onClick={() => toggle(c)}>{c.status === 'Cleared' ? 'Reopen' : 'Mark cleared'}</button>} {can('log') && (c.by === user.id || user.role === 'Owner') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('constraints', c.id), 'Constraint deleted')}>Delete</button>}</td></tr>))}</tbody></table></div>
+                <td className="nowrap">{can('log') && !foreman && <button type="button" className="btn small" onClick={() => toggle(c)}>{c.status === 'Cleared' ? 'Reopen' : 'Mark cleared'}</button>} {can('log') && !foreman && (c.by === user.id || user.role === 'Owner') && <button type="button" className="link" onClick={() => write(() => api.deleteRecord('constraints', c.id), 'Constraint deleted')}>Delete</button>}</td></tr>))}</tbody></table></div>
         ) : <Empty>{openOnly ? 'No open constraints.' : 'No constraints logged yet.'}</Empty>}
       </div>
       <div className="card">
