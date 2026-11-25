@@ -28,12 +28,26 @@ function TempPassword({ target, onDone, onSet }) {
   );
 }
 
+// A trade foreman's trades: chosen from the trade list (the schedule's resources). Saves on every change.
+const ROLES = ['Owner', 'Super', 'Foreman', 'Viewer'];
+function TradePicker({ value, onChange }) {
+  const { data } = useApp();
+  const left = data.trades.filter((t) => !value.includes(t));
+  return (
+    <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+      {value.map((t) => <span key={t} className="tag placed">{t} <button type="button" className="link" aria-label={`Remove ${t}`} onClick={() => onChange(value.filter((x) => x !== t))}>×</button></span>)}
+      {!value.length && <span className="bad">No trade yet: can't log anything</span>}
+      {left.length > 0 && <select value="" onChange={(e) => e.target.value && onChange([...value, e.target.value])} aria-label="Add a trade"><option value="">Add trade…</option>{left.map((t) => <option key={t}>{t}</option>)}</select>}
+    </div>
+  );
+}
+
 export default function Admin() {
   const { data, can, api, write, user } = useApp();
   const owner = can('admin');
   const areas = [...new Set(data.areaZones.map((a) => a.area))];
   const [az, setAz] = useState(Object.fromEntries(areas.map((a) => [a, data.areaZones.filter((x) => x.area === a).map((x) => x.zone).join(', ')])));
-  const [np, setNp] = useState({ email: '', name: '', role: 'Viewer', pw: '' });
+  const [np, setNp] = useState({ email: '', name: '', role: 'Viewer', pw: '', trades: [] });
   const [tp, setTp] = useState(null); // invite email or member id with the temp-password form open
   const [given, setGiven] = useState(null); // { label, pw } just set, shown until dismissed
   // Temporary passwords only show once the server function is set up; until then people use the emailed link.
@@ -46,14 +60,15 @@ export default function Admin() {
     let res;
     const email = np.email.trim(), pw = np.pw;
     const ok = await write(async () => {
-      if (pw) res = await api.setTempPassword({ email, name: np.name.trim(), role: np.role, password: pw });
-      else res = await api.addMember(email, np.name.trim(), np.role);
+      const trades = np.role === 'Foreman' ? np.trades : [];
+      if (pw) res = await api.setTempPassword({ email, name: np.name.trim(), role: np.role, trades, password: pw });
+      else res = await api.addMember(email, np.name.trim(), np.role, trades);
     }, 'Person added');
     if (ok) {
       if (pw) setGiven({ label: email, pw });
       setAdded(pw ? `${email} can sign in now with ${np.role} access. The temporary password is shown above.`
         : res === 'member' ? `${email} already had an account, so they have ${np.role} access now.` : `${email} will get ${np.role} access the first time they sign in with that email.`);
-      setNp({ email: '', name: '', role: np.role, pw: '' });
+      setNp({ email: '', name: '', role: np.role, pw: '', trades: [] });
     }
   };
   const invites = data.invites || [];
@@ -62,11 +77,12 @@ export default function Admin() {
     <section className="screen">
       <div className="card">
         <h2>People and roles</h2>
-        <p className="note">Owner: everything, including plan, schedule and setup. Super: logs actuals, commitments, constraints and tracker. Viewer: read only. Add people below. They open the site, choose Sign in to edit › First time or forgot password, and get an emailed link; after opening it they set their own password. The role you set here is applied automatically.</p>
+        <p className="note">Owner: everything, including plan, schedule and setup. Super: logs actuals, commitments, constraints and tracker, and approves extensions. Foreman: for their own trade(s) only, logs actuals and manpower, closes commitments, raises constraints, confirms completion and asks for extensions (an owner or super approves). Viewer: read only. Add people below. They open the site, choose Sign in to edit › First time or forgot password, and get an emailed link; after opening it they set their own password. The role you set here is applied automatically.</p>
         {given && <div className="banner" style={{ margin: '8px 0' }}>Give this temporary password to <b>{given.label}</b>: <code className="uid" style={{ display: 'inline-block' }}>{given.pw}</code> They sign in with their email and this password, then set their own. <button type="button" className="btn small" onClick={() => setGiven(null)}>Done</button></div>}
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Person</th><th>Role</th><th /></tr></thead>
           <tbody>{data.users.map((u) => <React.Fragment key={u.id}><tr><td>{u.name}{u.id === user.id ? ' (you)' : ''}</td>
-            <td>{owner && u.id !== user.id ? <select value={u.role} onChange={(e) => write(() => api.saveUserRole(u.id, e.target.value), 'Role changed')}>{['Owner', 'Super', 'Viewer'].map((r) => <option key={r}>{r}</option>)}</select> : u.role}</td>
+            <td>{owner && u.id !== user.id ? <select value={u.role} onChange={(e) => write(() => api.saveUserRole(u.id, e.target.value), 'Role changed')}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select> : u.role}
+              {u.role === 'Foreman' && (owner && api.saveUserTrades ? <TradePicker value={u.trades || []} onChange={(t) => write(() => api.saveUserTrades(u.id, t), 'Trades saved')} /> : <small className="sub">{(u.trades || []).join(', ')}</small>)}</td>
             <td>{owner && canTemp && u.id !== user.id && tp !== u.id && <button type="button" className="link" onClick={() => setTp(u.id)}>Reset password</button>}</td></tr>
             {tp === u.id && <tr><td colSpan={3}><TempPassword target={{ userId: u.id, label: u.name }} onDone={() => setTp(null)} onSet={setGiven} /></td></tr>}</React.Fragment>)}</tbody></table></div>
         {owner && api.addMember && (
@@ -76,15 +92,17 @@ export default function Admin() {
               <Field label="Email"><input type="email" value={np.email} maxLength={200} onChange={(e) => setNp({ ...np, email: e.target.value })} placeholder="name@company.com" /></Field>
               <Field label="Name (optional)"><input value={np.name} maxLength={100} onChange={(e) => setNp({ ...np, name: e.target.value })} /></Field>
               <Field label="Role"><select value={np.role} onChange={(e) => setNp({ ...np, role: e.target.value })}>
-                <option value="Viewer">Viewer (view only)</option><option value="Super">Super (can log and modify)</option><option value="Owner">Owner (everything)</option></select></Field>
+                <option value="Viewer">Viewer (view only)</option><option value="Foreman">Foreman (own trade only)</option><option value="Super">Super (can log and modify)</option><option value="Owner">Owner (everything)</option></select></Field>
+              {np.role === 'Foreman' && <Field label="Foreman's trade(s)" wide><TradePicker value={np.trades} onChange={(t) => setNp({ ...np, trades: t })} /></Field>}
               {canTemp && <Field label="Temporary password (recommended)"><div className="row" style={{ gap: 6 }}><input value={np.pw} maxLength={72} onChange={(e) => setNp({ ...np, pw: e.target.value })} placeholder="Leave blank to rely on an email link" style={{ fontFamily: 'var(--f-data)' }} /><button type="button" className="btn small" onClick={() => setNp({ ...np, pw: genPassword() })}>Generate</button></div></Field>}
-              <div className="form-a wide"><button type="button" className="btn primary" disabled={!emailOk || (np.pw && np.pw.length < 8)} onClick={add}>Add person</button><span className="msg">{added}</span></div>
+              <div className="form-a wide"><button type="button" className="btn primary" disabled={!emailOk || (np.pw && np.pw.length < 8) || (np.role === 'Foreman' && !np.trades.length)} onClick={add}>Add person</button><span className="msg">{added}</span></div>
             </div>
             <h3 style={{ margin: '16px 0 6px' }}>Waiting for first sign-in</h3>
             {invites.length ? (
               <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Added</th><th /></tr></thead>
                 <tbody>{invites.map((i) => <React.Fragment key={i.email}>{tp === i.email && <tr><td colSpan={5}><TempPassword target={{ email: i.email, label: i.name || i.email }} onDone={() => setTp(null)} onSet={setGiven} /></td></tr>}<tr><td>{i.email}</td><td>{i.name}</td>
-                  <td><select value={i.role} onChange={(e) => write(() => api.setInviteRole(i.email, e.target.value), 'Role changed')}>{['Owner', 'Super', 'Viewer'].map((r) => <option key={r}>{r}</option>)}</select></td>
+                  <td><select value={i.role} onChange={(e) => write(() => api.setInviteRole(i.email, e.target.value), 'Role changed')}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
+                    {i.role === 'Foreman' && api.setInviteTrades && <TradePicker value={i.trades || []} onChange={(t) => write(() => api.setInviteTrades(i.email, t), 'Trades saved')} />}</td>
                   <td>{i.at}</td><td>{canTemp && tp !== i.email && <button type="button" className="link" onClick={() => setTp(i.email)}>Set temporary password</button>} <button type="button" className="link" onClick={() => write(() => api.removeInvite(i.email), 'Invite removed')}>Remove</button></td></tr></React.Fragment>)}</tbody></table></div>
             ) : <p className="note">Nobody waiting. People you add who haven't signed in yet show here.</p>}
           </>
