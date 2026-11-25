@@ -32,15 +32,17 @@ create or replace function foreman_task(p text, p_uid int, p_wagon text) returns
     else false end
 $$;
 
--- 3. Field data for foremen
+-- 3. Field data for foremen (hand-over to a successor stays Owner/Super; columns also added by 015_successor.sql)
+alter table actuals add column if not exists successor_uid int;
+alter table actuals add column if not exists successor_takt text;
 drop policy if exists foreman_insert_actuals on actuals;
 create policy foreman_insert_actuals on actuals for insert with check (
-  my_role(project) = 'Foreman' and by = auth.uid()
+  my_role(project) = 'Foreman' and by = auth.uid() and successor_uid is null and successor_takt is null
   and (foreman_task(project, activity_uid, wagon)
        or (activity_uid is null and coalesce(wagon, '') = '' and trade = any (my_trades(project)))));
 drop policy if exists foreman_change_actuals on actuals;
 create policy foreman_change_actuals on actuals for update using (my_role(project) = 'Foreman' and by = auth.uid())
-  with check (my_role(project) = 'Foreman' and by = auth.uid()
+  with check (my_role(project) = 'Foreman' and by = auth.uid() and successor_uid is null and successor_takt is null
     and (foreman_task(project, activity_uid, wagon) or (activity_uid is null and coalesce(wagon, '') = '' and trade = any (my_trades(project)))));
 drop policy if exists foreman_delete_actuals on actuals;
 create policy foreman_delete_actuals on actuals for delete using (my_role(project) = 'Foreman' and by = auth.uid());
