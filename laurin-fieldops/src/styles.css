@@ -235,6 +235,7 @@ td.off { background: repeating-linear-gradient(45deg, transparent 0 6px, var(--l
 .btn.okb:hover { background: var(--green-soft); }
 .tag.ok { color: var(--green); }
 .tag.warn { color: #b26a00; }
+small.ok { color: var(--green); font-weight: 700; }
 .ext-list { list-style: none; padding-left: 0; }
 .ext-req { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
 .ext-req:last-child { border-bottom: 0; }
