@@ -234,6 +234,11 @@ td.off { background: repeating-linear-gradient(45deg, transparent 0 6px, var(--l
 .btn.okb { border-color: var(--green); color: var(--green); background: var(--panel); }
 .btn.okb:hover { background: var(--green-soft); }
 .tag.ok { color: var(--green); }
+.tag.warn { color: #b26a00; }
+.ext-list { list-style: none; padding-left: 0; }
+.ext-req { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
+.ext-req:last-child { border-bottom: 0; }
+.nav-n { display: inline-block; min-width: 18px; margin-left: 5px; padding: 0 5px; border-radius: 99px; background: var(--bad); color: #fff; font-size: .72rem; font-weight: 700; line-height: 18px; text-align: center; }
 .item-m .btn.small { padding: 1px 8px; font-size: .75rem; }
 .chip.click, .gr.click { cursor: pointer; } .chip.click:hover { border-color: var(--bad); } .gr.click:hover { background: var(--green-soft); }
 .adj-item { display: grid; gap: 3px; padding: 10px 12px; background: var(--bg); border-radius: 6px; font-size: .9rem; }
