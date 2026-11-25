@@ -7,14 +7,15 @@ import { applyDelays, forecastSchedule } from './logic/forecast.js';
 import { applyPlacements } from './logic/mapping.js';
 
 export const VIEWS = [
-  ['day', 'Day'], ['wwp', 'Weekly plan'], ['trades', 'By trade'], ['lookahead', '6-week lookahead'], ['takt', 'Takt plan'], ['model', '3D zones'], ['tracker', 'Tracker'], ['report', 'Weekly report'], ['schedule', 'Schedule import'], ['admin', 'Setup'],
+  ['day', 'Day'], ['wwp', 'Weekly plan'], ['trades', 'By trade'], ['lookahead', '6-week lookahead'], ['takt', 'Takt plan'], ['model', '3D zones'], ['tracker', 'Tracker'], ['report', 'Weekly report'], ['ext', 'Extensions'], ['schedule', 'Schedule import'], ['admin', 'Setup'],
 ];
 const validView = (h) => (VIEWS.some(([v]) => v === h) ? h : 'day');
 
 // What each role may do. The live database enforces the same rules (server/supabase/migrations/002_security.sql).
 const RIGHTS = {
-  Owner: ['log', 'tracker', 'plan', 'admin', 'import'],
-  Super: ['log', 'tracker'],
+  Owner: ['log', 'tracker', 'plan', 'admin', 'import', 'approve'],
+  Super: ['log', 'tracker', 'approve'],
+  Foreman: ['log'], // field logging limited to their trade(s): see owns() / ownsTrade() below and 014_foreman.sql
   Viewer: [],
   Visitor: [], // not signed in, or signed in but not added to the project: view only
 };
@@ -57,6 +58,11 @@ export function AppProvider({ children }) {
   // Visitors (and people signed in but not yet added) view everything except Setup and change nothing.
   const user = member || (data && auth.publicView ? { id: userId, name: userId ? account.email || 'Signed in' : 'Visitor', role: 'Visitor', signedIn: !!userId } : null);
   const can = (right) => !!user && (RIGHTS[user.role] || []).includes(right);
+  // Trade foremen work only on their own trade(s): schedule tasks whose resources include one of them, or takt wagons of that trade.
+  const foreman = user?.role === 'Foreman';
+  const myTrades = foreman ? user.trades || [] : [];
+  const ownsTrade = (t) => can('log') && (!foreman || myTrades.includes(t));
+  const owns = (a) => can('log') && (!foreman || (a?.trade || '').split(', ').some((t) => myTrades.includes(t)));
 
   const today = localToday();
   const derived = useMemo(() => {
@@ -76,7 +82,7 @@ export function AppProvider({ children }) {
     signIn: async (id) => { const u = await auth.signIn(id); if (u) { setUserId(u); if (!data) await reload(); } },
     signInWithPassword: async (email, pw) => { const u = await auth.signInWithPassword(email, pw); setUserId(u); await refreshAccount(); await reload(); setSigningIn(false); },
     setPassword: async (pw) => { await auth.setPassword(pw); await refreshAccount(); await reload(); },
-    userId, member, account, signingIn, setSigningIn,
+    userId, member, account, signingIn, setSigningIn, foreman, myTrades, owns, ownsTrade,
     signOut: async () => { await auth.signOut(); setUserId(null); setAccount({ email: '', hasPassword: true, temp: false }); await reload(); },
     week: mondayOf(day), working: data ? isWorking(day, data.calendar) : true,
   };
