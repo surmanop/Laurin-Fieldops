@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { fmt } from '../logic/dates.js';
 import { STATUSES } from '../logic/schedule.js';
-import { NotHappening } from './adjust.jsx';
+import { Confirmed, NotHappening, lastConfirm } from './adjust.jsx';
+import { EXT, isExtension } from '../logic/forecast.js';
 import { PlaceButton } from './place.jsx';
 import { useApp } from '../store.jsx';
 
@@ -31,6 +32,7 @@ export const Field = ({ label, children, wide }) => (<label className={'field' +
 // One schedule item: master schedule activity or takt wagon-zone.
 export function Item({ a, entries = [], extra }) {
   const { data } = useApp();
+  const conf = lastConfirm(data.actuals, a);
   const placer = a.placed ? data.users.find((u) => u.id === a.placed.by)?.name : '';
   return (
     <li className={'item' + (a.category === 'takt' ? ' takt' : '')} style={a.category === 'takt' ? { borderLeftColor: a.color } : undefined}>
@@ -44,11 +46,14 @@ export function Item({ a, entries = [], extra }) {
         {a.critical && <span className="tag bad">Critical</span>}
         {a.blocked && <span className="tag bad">Blocked</span>}
         {a.shift > 0 && <span className="tag bad" title={`Baseline ${fmt(a.baseStart)} – ${fmt(a.baseFinish, 'shortY')}`}>Pushed +{a.shift}d</span>}
+        {a.ext > 0 && <span className="tag bad" title={`Baseline finish ${fmt(a.baseFinish, 'shortY')}`}>Extended +{a.ext}d</span>}
+        {conf && <span className="tag ok" title={conf.notes}>{conf.notes.startsWith('Extended') ? 'Extended' : 'Confirmed'} {fmt(conf.day)}</span>}
         {a.placed && <span className="tag placed" title={`Schedule group: ${a.placed.from}`}>Placed by {placer || 'team'}{a.placed.at ? ` \u00b7 ${fmt(a.placed.at.slice(0, 10))}` : ''}</span>}
         <PlaceButton a={a} />
+        <Confirmed a={a} />
         <NotHappening a={a} />
       </div>
-      {(a.delays || []).length > 0 && <div className="delay-note">{a.delays.map((d) => <div key={d.id || d.at}><b>Delay</b> +{d.days} working day{d.days === 1 ? '' : 's'}{d.delayFrom ? ` from ${fmt(d.delayFrom, 'wk')}` : ` (logged ${fmt((d.at || '').slice(0, 10), 'wk')})`} · {d.reason}{d.note ? ` \u2014 ${d.note}` : ''}</div>)}</div>}
+      {(a.delays || []).length > 0 && <div className="delay-note">{a.delays.map((d) => <div key={d.id || d.at}><b>{isExtension(d) ? 'Extended' : 'Delay'}</b> +{d.days} working day{d.days === 1 ? '' : 's'}{isExtension(d) ? ' on the finish' : ''}{d.delayFrom ? ` from ${fmt(d.delayFrom, 'wk')}` : ` (logged ${fmt((d.at || '').slice(0, 10), 'wk')})`} · {isExtension(d) ? d.reason.slice(EXT.length) : d.reason}{d.note ? ` \u2014 ${d.note}` : ''}</div>)}</div>}
       {entries.length > 0 && <div className="item-a">{entries.map((e) => <span key={e.id}><Status s={e.status} /> {[e.trade, e.crew != null && e.crew !== '' ? e.crew + ' crew' : '', e.durationDays != null ? e.durationDays + (+e.durationDays === 1 ? ' day' : ' days') : '', e.notes, e.carried ? `day ${e.dayNo} of ${e.total} (logged ${fmt(e.day, 'wk')})` : ''].filter(Boolean).join(' · ')}</span>)}</div>}
       {extra}
     </li>
