@@ -31,7 +31,7 @@ const TASK_ORDER = ['Fire Spray', 'Intumescent Paint', 'Masonry', 'Steel Stud', 
 const taskRank = (t) => { const i = TASK_ORDER.indexOf(t); return i < 0 ? TASK_ORDER.length : i; };
 
 export async function loadProject() {
-  const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments, invites, manpower, placements] = await Promise.all([
+  const [project, zones, rooms, trades, areaZones, calendar, activities, takt, wagons, roomTasks, wagonTasks, zoneRules, users, versions, actuals, commitments, constraints, adjustments, invites, manpower, placements, extRequests] = await Promise.all([
     supabase.from('projects').select('*').eq('code', PROJECT).single().then(must),
     sel('zones').order('sort_order').then(must), sel('rooms').then(must), supabase.from('trades').select('*').order('sort_order').then(must),
     sel('area_zones').then(must), sel('calendar_exceptions').then(must), selAll('activities', ['schedule_uid']),
@@ -43,6 +43,8 @@ export async function loadProject() {
     sel('invites').order('invited_at').then(must),
     selAll('manpower', ['day', 'trade']),
     selAll('zone_placements', ['schedule_uid']),
+    // Foreman extension requests (server/supabase/migrations/014_foreman.sql). Empty until that migration has run.
+    sel('extension_requests').order('requested_at', { ascending: false }).then(({ data, error }) => (error ? [] : data)),
   ]);
   const rt = {}, rta = {}; roomTasks.forEach((r) => { (rt[r.room] ||= {})[r.task] = r.status; (rta[r.room] ||= {})[r.task] = r.updated_at || null; });
   const wt = {}; wagonTasks.forEach((r) => { (wt[r.wagon_id] ||= []).push(r.task); });
@@ -57,14 +59,15 @@ export async function loadProject() {
     takt: { start: takt.train_start, taktDays: takt.takt_days, train: takt.train_order, note: takt.baseline_note, trains: trainsFromNote(takt.baseline_note), wagons: wagons.map((w) => ({ id: w.wagon_id, name: w.name, trade: w.trade, match: w.schedule_match || [], skip: w.skip_zones || [] })) },
     tasks: [...new Set(roomTasks.map((r) => r.task))].sort((a, b) => taskRank(a) - taskRank(b) || a.localeCompare(b)), roomTasks: rt, roomTaskAt: rta, wagonTasks: wt,
     zoneRules: zoneRules.map((r) => ({ group: r.schedule_group, name: r.name_pattern, floor: r.floor, zones: r.zones, basis: r.basis })),
-    users: users.map((u) => ({ id: u.user_id, name: u.display_name, role: u.role })),
+    users: users.map((u) => ({ id: u.user_id, name: u.display_name, role: u.role, trades: u.trades || [] })),
     scheduleVersions: versions.map((v) => ({ name: v.name, statusDate: v.status_date, loaded: v.loaded_at?.slice(0, 10), count: v.activity_count })),
     actuals: actuals.map(toCamel), commitments: commitments.map(toCamel), constraints: constraints.map(toCamel),
     // target: a schedule uid (number) or a takt cell ('tk:w05|Zone 1')
     adjustments: adjustments.map((x) => ({ ...toCamel(x), target: x.target_uid ?? x.target_takt })),
     placements: placements.map((p) => ({ uid: p.schedule_uid, zones: p.zones || [], by: p.by, at: p.at })),
     manpower: manpower.map((m) => ({ day: m.day, trade: m.trade, headcount: m.headcount })),
-    invites: invites.map((i) => ({ email: i.email, name: i.display_name, role: i.role, at: i.invited_at?.slice(0, 10) })),
+    invites: invites.map((i) => ({ email: i.email, name: i.display_name, role: i.role, trades: i.trades || [], at: i.invited_at?.slice(0, 10) })),
+    extRequests: extRequests.map((x) => ({ ...toCamel(x), target: x.target_uid ?? x.target_takt })),
   };
 }
 
@@ -92,6 +95,8 @@ export async function saveRecord(table, rec) {
   if (table === 'adjustments') { const { target, ...rest } = r; r = { ...rest, targetUid: typeof target === 'number' ? target : null, targetTakt: typeof target === 'string' ? target : null }; }
   return toCamel(must(await supabase.from(TABLE[table]).upsert(toSnake(r)).select().single()));
 }
+// Change some fields of an existing row (a plain update, so roles that may edit but not create rows can use it).
+export async function updateRecord(table, id, patch) { must(await supabase.from(TABLE[table]).update(toSnake(patch)).eq('project', PROJECT).eq('id', id)); }
 export async function deleteRecord(table, id) { must(await supabase.from(TABLE[table]).delete().eq('id', id)); }
 export async function setRoomTask(room, task, status) { must(await supabase.from('room_tasks').upsert({ project: PROJECT, room, task, status, updated_at: new Date().toISOString() })); }
 // Several trains are kept as JSON in takt_settings.baseline_note ({ trains: [{ id, name, start, train, wagonIds }] }).
@@ -105,10 +110,14 @@ export async function saveTakt(t) {
 }
 export async function saveTrades(list) { must(await supabase.rpc('replace_trades', { p_trades: list })); }
 export async function saveAreaZones(rows) { must(await supabase.rpc('replace_area_zones', { p_project: PROJECT, p_rows: rows })); }
-export async function saveUserRole(id, role) { must(await supabase.from('memberships').update({ role }).eq('project', PROJECT).eq('user_id', id)); }
+export async function saveUserRole(id, role) { must(await supabase.from('memberships').update(role === 'Foreman' ? { role } : { role, trades: [] }).eq('project', PROJECT).eq('user_id', id)); }
+export async function saveUserTrades(id, trades) { must(await supabase.from('memberships').update({ trades }).eq('project', PROJECT).eq('user_id', id)); }
 // Add a person by email. Returns 'member' if they already have an account (access now), or 'invited'
 // (their role is applied automatically the first time they sign in with that email).
-export async function addMember(email, name, role) { return must(await supabase.rpc('invite_member', { p_project: PROJECT, p_email: email, p_name: name, p_role: role })); }
+export async function addMember(email, name, role, trades = []) {
+  const args = { p_project: PROJECT, p_email: email, p_name: name, p_role: role };
+  return must(await supabase.rpc('invite_member', role === 'Foreman' ? { ...args, p_trades: trades } : args));
+}
 // Owner sets a temporary password (no email needed): { email | userId, name, role, password }. Runs on the server (api/).
 export async function setTempPassword(args) {
   const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -121,7 +130,15 @@ export async function setTempPassword(args) {
 export async function tempPasswordReady() {
   try { const r = await fetch('/api/set-temp-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); return r.status !== 500 && r.status !== 404; } catch (e) { return false; }
 }
-export async function setInviteRole(email, role) { must(await supabase.from('invites').update({ role }).eq('project', PROJECT).eq('email', email)); }
+export async function setInviteRole(email, role) { must(await supabase.from('invites').update(role === 'Foreman' ? { role } : { role, trades: [] }).eq('project', PROJECT).eq('email', email)); }
+export async function setInviteTrades(email, trades) { must(await supabase.from('invites').update({ trades }).eq('project', PROJECT).eq('email', email)); }
+// Foreman extension requests: wait for an Owner or Super, who approves (adds the extension to the schedule) or rejects.
+export async function requestExtension(r) {
+  const { target, ...rest } = r;
+  must(await supabase.from('extension_requests').insert(toSnake({ ...rest, project: PROJECT, targetUid: typeof target === 'number' ? target : null, targetTakt: typeof target === 'string' ? target : null })));
+}
+export async function decideExtension(id, approve, note = '') { return must(await supabase.rpc('decide_extension', { p_id: id, p_approve: approve, p_note: note })); }
+export async function withdrawExtension(id) { must(await supabase.from('extension_requests').delete().eq('project', PROJECT).eq('id', id)); }
 export async function removeInvite(email) { must(await supabase.from('invites').delete().eq('project', PROJECT).eq('email', email)); }
 export async function replaceActivities(rows, version, clearAdjustments = true) { must(await supabase.rpc('replace_activities', { p_project: PROJECT, p_rows: rows, p_version: version, p_clear_adjustments: clearAdjustments })); }
 export async function resetDemo() { throw new Error('Not available in the live app.'); }
