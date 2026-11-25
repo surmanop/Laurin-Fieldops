@@ -7,7 +7,7 @@ import { addDays, fmt, isWorking, mondayOf, stepWorking } from '../logic/dates.j
 // Daily site headcount per trade (one number per trade for the whole site), plus a trend chart.
 // Separate from the crew numbers on zone actuals.
 export function Manpower() {
-  const { data, day, can, api, write } = useApp();
+  const { data, day, can, api, write, foreman, myTrades, ownsTrade } = useApp();
   const rows = data.manpower || [];
   const [added, setAdded] = useState([]); // specialty lines added on screen, not saved yet
   const [spec, setSpec] = useState('');
@@ -15,10 +15,11 @@ export function Manpower() {
   // "Specialty" itself isn't a box: each specialty gets its own named line (e.g. "Specialty: Lockers").
   const trades = useMemo(() => {
     const extra = [...new Set(rows.map((r) => r.trade).concat(added))].filter((t) => !data.trades.includes(t)).sort();
-    const base = data.trades.filter((t) => t !== SPECIALTY);
+    // A foreman's own trade(s) always get a box, even if they are not on the trade list.
+    const base = [...data.trades.filter((t) => t !== SPECIALTY), ...myTrades.filter((t) => !data.trades.includes(t))];
     const at = base.indexOf('Cleaning');
     return at >= 0 ? [...base.slice(0, at), ...extra, ...base.slice(at)] : [...base, ...extra];
-  }, [data, rows, added]);
+  }, [data, rows, added, myTrades]);
   const addSpec = () => { const t = specialtyTrade(spec).trim(); if (t === SPECIALTY) return; if (!trades.includes(t)) setAdded([...added, t]); setSpec(''); };
   const onDay = (d) => Object.fromEntries(rows.filter((r) => r.day === d).map((r) => [r.trade, r.headcount]));
   const saved = useMemo(() => onDay(day), [rows, day]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -33,7 +34,7 @@ export function Manpower() {
   const prevVals = onDay(prev);
 
   const save = async () => {
-    const list = trades.map((t) => ({ trade: t, headcount: (vals[t] ?? '') === '' ? null : Math.max(0, Math.round(+vals[t])) }))
+    const list = trades.filter(ownsTrade).map((t) => ({ trade: t, headcount: (vals[t] ?? '') === '' ? null : Math.max(0, Math.round(+vals[t])) }))
       .filter((r) => (r.headcount ?? null) !== (saved[r.trade] ?? null));
     if (!list.length) { setDraft(null); return; }
     const ok = await write(() => api.saveManpower(day, list), `Manpower saved · ${total} on site`);
@@ -43,19 +44,19 @@ export function Manpower() {
   return (
     <div className="card">
       <div className="card-h"><h2>Manpower on site · {fmt(day, 'long')}</h2><span className="mp-total"><b>{total}</b> workers</span></div>
-      <p className="note">Site headcount per trade for the whole day{edit ? '. Leave a trade blank if it was not on site.' : '.'}</p>
+      <p className="note">Site headcount per trade for the whole day{edit ? '. Leave a trade blank if it was not on site.' : '.'}{foreman ? ` You can enter ${myTrades.join(', ') || 'no trade yet (ask an owner to set your trade)'}.` : ''}</p>
       {edit ? (
         <>
           <div className="mp-grid">
             {trades.map((t) => (
               <label key={t} className={'mp-cell' + ((vals[t] ?? '') !== '' && +vals[t] > 0 ? ' on' : '')}>
                 <span>{t}</span>
-                <input type="number" inputMode="numeric" min="0" max="2000" value={vals[t] ?? ''} aria-label={`${t} headcount`}
+                <input type="number" inputMode="numeric" min="0" max="2000" value={vals[t] ?? ''} aria-label={`${t} headcount`} disabled={!ownsTrade(t)}
                   onChange={(e) => setDraft({ ...vals, [t]: e.target.value })} />
               </label>
             ))}
           </div>
-          {hasSpec && (
+          {hasSpec && !foreman && (
             <div className="row" style={{ gap: 6, marginTop: 8 }}>
               <input value={spec} maxLength={60} onChange={(e) => setSpec(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSpec(); } }} placeholder="Specialty trade, e.g. Lockers" aria-label="Add a specialty trade" style={{ width: 240 }} />
               <button type="button" className="btn small" onClick={addSpec} disabled={!spec.trim()}>Add specialty</button>
