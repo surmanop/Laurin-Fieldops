@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../store.jsx';
 import { Drawer, Field } from './parts.jsx';
-import { REASONS, STATUSES } from '../logic/schedule.js';
+import { REASONS, STATUSES, isFor } from '../logic/schedule.js';
 import { EXT, forecastSchedule, keyMilestones, makeWorkdays } from '../logic/forecast.js';
 import { computeTakt } from '../logic/takt.js';
 import { addDays, fmt } from '../logic/dates.js';
@@ -98,6 +98,14 @@ const CONFIRM = 'Confirmed: ';
 export const lastConfirm = (actuals, a) => actuals.filter((e) => (a.category === 'takt' ? e.wagon === a.wagon && e.zone === a.zones[0] : e.activityUid === a.uid) && /^(Confirmed|Extended|Extension requested): /.test(e.notes || '')).sort((x, y) => (x.day + (x.at || '') < y.day + (y.at || '') ? 1 : -1))[0];
 const zoneKeyOf = (a) => (a.category === 'site' ? 'site' : a.category === 'unplaced' ? 'bucket:' + a.bucket : a.zones[0] || 'site');
 
+// Hand-over: a completion logged with this task as its successor marks it Ready, until work is logged on it.
+export function readyFor(data, a) {
+  const key = String(pushTarget(a));
+  const hand = data.actuals.filter((e) => (e.successorUid != null && String(e.successorUid) === key) || (e.successorTakt && e.successorTakt === key))
+    .sort((x, y) => (x.day + (x.at || '') < y.day + (y.at || '') ? 1 : -1))[0];
+  if (!hand) return null;
+  return data.actuals.some((e) => isFor(e, a) && e.day >= hand.day && e.status !== 'Completed') ? null : hand;
+}
 export const pendingExt = (data, a) => (data.extRequests || []).find((x) => x.status === 'Pending' && String(x.target) === String(pushTarget(a)));
 export function Confirmed({ a }) {
   const { data, owns } = useApp();
