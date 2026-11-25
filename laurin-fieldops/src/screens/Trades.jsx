@@ -17,13 +17,13 @@ const zoneSort = (a, b) => {
 };
 
 export default function Trades() {
-  const { data, derived, day, can, user, api, write } = useApp();
+  const { data, derived, day, can, user, api, write, foreman, myTrades, owns, ownsTrade } = useApp();
   const week = mondayOf(day);
   const trades = useMemo(() => {
     const extra = [...new Set(data.actuals.map((e) => e.trade).concat(data.commitments.map((c) => c.trade)))].filter((t) => t && !data.trades.includes(t)).sort();
     return [...data.trades, ...extra];
   }, [data]);
-  const [trade, setTrade] = useState(trades[0] || '');
+  const [trade, setTrade] = useState((foreman && trades.find((t) => myTrades.includes(t))) || trades[0] || '');
   const zones = useMemo(() => [...data.zones].sort(zoneSort), [data]);
 
   // Form: one task, several zones. Crew is entered per zone, so totals aren't double counted.
@@ -34,7 +34,7 @@ export default function Trades() {
   const codes = Object.keys(picked);
   const today = useMemo(() => activeOn(derived.items, day, data.calendar), [derived, day, data]);
   // Linking to a scheduled activity is offered when exactly one zone is ticked (same as Log actual on the Day screen).
-  const opts = codes.length === 1 ? today.filter((a) => onZone(a, codes[0])) : [];
+  const opts = codes.length === 1 ? today.filter((a) => onZone(a, codes[0]) && owns(a)) : [];
   const sel = opts.find((a) => String(a.uid) === f.item);
   const toggle = (code) => setPicked((p) => { const n = { ...p }; if (code in n) delete n[code]; else n[code] = ''; return n; });
 
@@ -87,7 +87,7 @@ export default function Trades() {
             <Kpi v={byZone.length} l="Zones worked this week" tone="mute" />
             <Kpi v={crewDays} l="Crew-days this week" tone="mute" />
           </div>
-          {can('log') && (
+          {ownsTrade(trade) && (
             <div className="card">
               <h2>Log {trade} work · {fmt(day, 'long')}</h2>
               <p className="note">Tick every zone the task happened in. One actual is saved per zone, with that zone's crew. To link it to a scheduled activity, tick a single zone.</p>
